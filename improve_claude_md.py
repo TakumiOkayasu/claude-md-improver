@@ -10,6 +10,7 @@ CLAUDE.md品質改善ツール
 5. 元の場所に戻す
 """
 
+import json
 import re
 import shutil
 from pathlib import Path
@@ -32,6 +33,11 @@ class CLAUDEFile:
     content: str
     issues: List[str]
     score: int
+
+    @property
+    def problem_issues(self) -> List[str]:
+        """問題点のみ抽出 (❌/⚠️)"""
+        return [i for i in self.issues if i.startswith("❌") or i.startswith("⚠️")]
 
 
 class CLAUDEMDImprover:
@@ -113,6 +119,64 @@ class CLAUDEMDImprover:
         
         return issues, max(0, min(100, score))
     
+    def generate_single_file_prompt(self, file: CLAUDEFile) -> str:
+        """単一ファイル用のAI改善プロンプトを生成"""
+        issues_text = "\n".join(
+            f"- {issue}" for issue in file.problem_issues
+        )
+
+        return f"""# CLAUDE.md改善依頼: {file.directory_name}
+
+## 改善方針
+
+### 必須対応
+- 曖昧な表現を明確に (「できるだけ」→「必ず」、「多分」→削除)
+- 禁止事項を明示 (具体的に、理由も記載)
+- 技術スタックを明記
+- コマンド例・コード例を追加
+
+### 推奨対応
+- プロジェクト概要を追加
+- スキル参照を追加 (グローバルスキルへの参照)
+
+### 禁止事項
+- 既存の内容を勝手に削除しない
+- プロジェクト固有の情報を推測で追加しない
+- 不明な部分は [要確認] とマークする
+
+## 品質基準
+
+- AIが間違えない: 曖昧な指示は禁止、具体的なルールのみ
+- AIがミスしない: チェックリスト形式、自己検証可能に
+- AIがルールを守る: 禁止事項を明確に、理由も記載
+
+## 対象ファイル情報
+
+- **プロジェクト**: {file.directory_name}
+- **品質スコア**: {file.score}/100
+
+### 検出された問題
+{issues_text}
+
+## 現在の内容
+
+````markdown
+{file.content.strip()}
+````
+
+## 出力指示
+
+改善後のCLAUDE.mdの内容のみを出力してください。説明やコメントは不要です。
+マークダウン形式で、`#` から始めてください。
+"""
+
+    def save_single_file_prompt(self, file: CLAUDEFile) -> Path:
+        """プロンプトをファイルに保存"""
+        prompt = self.generate_single_file_prompt(file)
+        prompt_path = self.work_dir / f"{file.directory_name}_PROMPT.md"
+        prompt_path.write_text(prompt, encoding="utf-8")
+        return prompt_path
+
     def improve_content(self, content: str, dir_name: str) -> str:
         """内容を改善 (AI依頼用プロンプト生成)"""
         # 改善は行わず、元のコンテンツをそのまま保持
@@ -247,9 +311,8 @@ class CLAUDEMDImprover:
                 "**検出された問題**:",
             ])
             
-            for issue in file.issues:
-                if issue.startswith("❌") or issue.startswith("⚠️"):
-                    prompt_parts.append(f"- {issue}")
+            for issue in file.problem_issues:
+                prompt_parts.append(f"- {issue}")
             
             prompt_parts.extend([
                 "",
@@ -316,7 +379,14 @@ class CLAUDEMDImprover:
         
         return archive_path
     
-    def run(self, dry_run: bool = True, generate_prompt: bool = True) -> List[CLAUDEFile]:
+    def run(
+        self,
+        dry_run: bool = True,
+        generate_prompt: bool = True,
+        output_json: bool = False,
+        host_source_dir: str | None = None,
+        host_work_dir: str | None = None,
+    ) -> List[CLAUDEFile]:
         """メイン処理"""
         console.print(Panel.fit(
             "[bold]CLAUDE.md 品質改善ツール (AI支援版)[/bold]\n"
@@ -358,11 +428,40 @@ class CLAUDEMDImprover:
             if len(prompt.splitlines()) > 30:
                 console.print(f"  ... (残り {len(prompt.splitlines()) - 30} 行)")
         
+        # manifest.json + 個別プロンプト出力
+        if output_json:
+            manifest = []
+            for file in processed:
+                original = str(file.original_path)
+                backup = str(file.backup_path)
+                if host_source_dir and host_work_dir:
+                    original = original.replace(
+                        str(self.source_dir), host_source_dir
+                    )
+                    backup = backup.replace(
+                        str(self.work_dir), host_work_dir
+                    )
+                manifest.append({
+                    "directory_name": file.directory_name,
+                    "original_path": original,
+                    "backup_path": backup,
+                    "score": file.score,
+                    "issues": file.problem_issues,
+                })
+                self.save_single_file_prompt(file)
+
+            manifest_path = self.work_dir / "manifest.json"
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            console.print(f"[green]✓[/green] manifest.json 出力: {manifest_path}")
+
         # 復元 (dry_runでない場合のみ)
         if not dry_run:
             console.print("\n[bold red]警告: AI改善前のファイルで上書きしようとしています[/bold red]")
             console.print("[yellow]通常は --apply を使用せず、AI改善後に手動で戻してください[/yellow]")
-        
+
         return processed
 
 
@@ -405,11 +504,28 @@ def main():
         help="AI依頼プロンプトを生成しない"
     )
     parser.add_argument(
+        "--output-json",
+        action="store_true",
+        help="manifest.json と個別プロンプトを出力 (自動パイプライン用)"
+    )
+    parser.add_argument(
+        "--host-source-dir",
+        type=str,
+        default=None,
+        help="ホスト側のsource_dirパス (Docker内パス→ホストパス変換用)"
+    )
+    parser.add_argument(
+        "--host-work-dir",
+        type=str,
+        default=None,
+        help="ホスト側のwork_dirパス (Docker内パス→ホストパス変換用)"
+    )
+    parser.add_argument(
         "--create-sample",
         action="store_true",
         help="サンプルデータを作成して動作確認"
     )
-    
+
     args = parser.parse_args()
     
     # サンプルデータ作成
@@ -454,7 +570,13 @@ def main():
     
     # 実行
     improver = CLAUDEMDImprover(args.source_dir, args.work_dir)
-    processed = improver.run(dry_run=True, generate_prompt=not args.no_prompt)
+    processed = improver.run(
+        dry_run=True,
+        generate_prompt=not args.no_prompt,
+        output_json=args.output_json,
+        host_source_dir=args.host_source_dir,
+        host_work_dir=args.host_work_dir,
+    )
     
     # 最終メッセージ
     console.print("\n" + "="*80)
