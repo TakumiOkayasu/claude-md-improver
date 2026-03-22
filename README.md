@@ -71,6 +71,31 @@ cp ~/prog/tmp_claude/project-a_CLAUDE.md ~/prog/project-a/CLAUDE.md
 cp ~/prog/tmp_claude/project-b_CLAUDE.md ~/prog/project-b/CLAUDE.md
 ```
 
+### 自動パイプライン
+
+Docker と claude CLI を使い、収集から改善・上書きまでを自動実行する。
+
+```bash
+# 前提: Docker, claude CLI がインストール済み
+
+# デフォルト (~/prog 以下を対象)
+./run_improve.sh
+
+# ディレクトリ指定
+./run_improve.sh /path/to/projects /path/to/workdir
+```
+
+4フェーズで動作:
+
+| Phase | 内容 | 実行環境 |
+|-------|------|----------|
+| 1 | CLAUDE.md収集 + 品質採点 + manifest.json生成 | Docker (python:slim) |
+| 2 | 個別プロンプトを claude CLI (sonnet) で改善 | ホスト |
+| 3 | 元ファイルと改善版の diff 表示 | ホスト |
+| 4 | バックアップ後に元ファイルを上書き | ホスト |
+
+バックアップは `{work_dir}/backups_{timestamp}/` に保存される。
+
 ### サンプルデータで動作確認
 
 ```bash
