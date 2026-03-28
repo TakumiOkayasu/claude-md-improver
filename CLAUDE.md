@@ -1,21 +1,30 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code)
+when working with code in this repository.
 
 ## Project Overview
 
-AI設定ファイル品質改善ツール。CLAUDE.md / SKILL.md / commands/*.md を収集し、プロファイル別の品質チェック・スコアリングを行い、AI改善用のプロンプトとZIPを生成する。
+AI設定ファイル品質改善ツール。
+CLAUDE.md / SKILL.md / commands/*.md を収集し、
+プロファイル別の品質チェック・スコアリングを行い、
+AI改善用のプロンプトとZIPを生成する。
 
-2つの実行モード:
-- **手動モード** (`run.sh`): 収集+採点+ZIP化 → 人間がAIに送信
-- **自動パイプライン** (`run_improve.sh`): 収集+採点 → claude CLI で自動改善 → diff → 上書き
+3つの実行方法:
+
+- **Docker手動モード** (`docker compose run --rm app`):
+  収集+採点+ZIP化 → 人間がAIに送信
+- **自動パイプライン** (`run_improve.sh`):
+  収集+採点 → claude CLI で自動改善 → diff → 上書き
+- **ローカル実行** (`run.sh`):
+  uv直接実行（Docker不要）
 
 ## Tech Stack
 
 - Python 3.10+ / uv
 - rich (CLI表示)
 - pytest (テスト)
-- Docker (自動パイプラインのPhase 1で使用)
+- Docker / Docker Compose (テスト・手動モード・自動パイプラインで使用)
 
 ## Commands
 
@@ -41,14 +50,17 @@ docker compose run --rm app python improve_claude_md.py --dump-config
 単一ファイル構成 (`improve_claude_md.py`):
 
 ### 設定層
+
 - `DEFAULT_CONFIG`: プロファイル別の品質ルール・プロンプトテンプレートを辞書で定義
 - `load_config()`: JSON設定ファイルを読み込みデフォルトとディープマージ
 - `_deep_merge()`: ネスト対応の辞書マージ
 
 ### データ層
+
 - `CLAUDEFile` (dataclass): ファイル情報保持（パス、内容、スコア、問題点、profile_name）
 
 ### ロジック層
+
 - `CLAUDEMDImprover`: メインクラス
   - `__init__(source_dir, work_dir, config=None, profiles=None)`
   - `find_claude_files()` → `process_files()` → `show_report()` の流れ
@@ -66,6 +78,7 @@ docker compose run --rm app python improve_claude_md.py --dump-config
 | `command-md` | `*.md` | タイトル必須、手順・入出力推奨 |
 
 `run_improve.sh` の4フェーズ:
+
 1. Docker内でPython実行 → `manifest.json` + 個別 `*_PROMPT.md` 生成
 2. `manifest.json`を読み、各エントリに対して `claude --print` で改善
 3. `diff` でプレビュー表示
