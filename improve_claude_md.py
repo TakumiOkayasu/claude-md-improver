@@ -290,7 +290,15 @@ class CLAUDEMDImprover:
             pattern = profile["target_pattern"]
             display = profile["display_name"]
             console.print(f"[cyan]{display}ファイルを検索中...[/cyan]")
-            files = [f for f in self.source_dir.rglob(pattern) if not any(part in exclude for part in f.parts)]
+            files = []
+            for f in self.source_dir.rglob(pattern):
+                if not f.exists():
+                    reason = "壊れたシンボリックリンク" if f.is_symlink() else "アクセス不可"
+                    console.print(f"[yellow]⚠ スキップ ({reason}): {f}[/yellow]")
+                    continue
+                if any(part in exclude for part in f.parts):
+                    continue
+                files.append(f)
             for f in files:
                 results.append(FoundFile(f, pname))
             console.print(f"[green]✓[/green] {len(files)}個の{display}を発見")
