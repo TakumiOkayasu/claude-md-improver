@@ -19,7 +19,12 @@ console = Console()
 def show_report(processed: List[TargetFile], source_dir: Path) -> None:
     """レポート表示"""
     console.print("\n" + "=" * 80)
-    console.print(Panel.fit("[bold cyan]品質チェック・改善レポート[/bold cyan]", border_style="cyan"))
+    console.print(
+        Panel.fit(
+            "[bold cyan]品質チェック・改善レポート[/bold cyan]",
+            border_style="cyan",
+        )
+    )
 
     table = Table(title="ファイル一覧", show_lines=True)
     table.add_column("プロジェクト", style="cyan")
@@ -28,9 +33,17 @@ def show_report(processed: List[TargetFile], source_dir: Path) -> None:
     table.add_column("パス")
 
     for file in processed:
-        status = "🟢 良好" if file.score >= 80 else "🟡 要改善" if file.score >= 60 else "🔴 要修正"
+        if file.score >= 80:
+            status = "🟢 良好"
+        elif file.score >= 60:
+            status = "🟡 要改善"
+        else:
+            status = "🔴 要修正"
         table.add_row(
-            file.directory_name, f"{file.score}/100", status, str(file.original_path.relative_to(source_dir))
+            file.directory_name,
+            f"{file.score}/100",
+            status,
+            str(file.original_path.relative_to(source_dir)),
         )
 
     console.print(table)
@@ -72,7 +85,11 @@ def main() -> None:
   """,
     )
     parser.add_argument(
-        "source_dir", type=Path, nargs="?", default=Path.home() / "prog", help="検索元ディレクトリ (デフォルト: ~/prog)"
+        "source_dir",
+        type=Path,
+        nargs="?",
+        default=Path.home() / "prog",
+        help="検索元ディレクトリ (デフォルト: ~/prog)",
     )
     parser.add_argument(
         "--work-dir",
@@ -80,20 +97,40 @@ def main() -> None:
         default=Path.home() / "prog" / "tmp_claude",
         help="作業ディレクトリ (デフォルト: ~/prog/tmp_claude)",
     )
-    parser.add_argument("--config", type=Path, default=None, help="設定ファイルパス (JSON形式、省略時はデフォルト設定)")
     parser.add_argument(
-        "--profiles", type=str, default=None, help="使用プロファイル (カンマ区切り、例: claude-md,skill-md,command-md)"
+        "--config",
+        type=Path,
+        default=None,
+        help="設定ファイルパス (JSON形式、省略時はデフォルト設定)",
     )
-    parser.add_argument("--dump-config", action="store_true", help="デフォルト設定をJSON形式で出力して終了")
+    parser.add_argument(
+        "--profiles",
+        type=str,
+        default=None,
+        help="使用プロファイル (カンマ区切り、例: claude-md,skill-md,command-md)",
+    )
+    parser.add_argument(
+        "--dump-config",
+        action="store_true",
+        help="デフォルト設定をJSON形式で出力して終了",
+    )
     parser.add_argument("--no-prompt", action="store_true", help="AI依頼プロンプトを生成しない")
     parser.add_argument(
-        "--output-json", action="store_true", help="manifest.json と個別プロンプトを出力 (自動パイプライン用)"
+        "--output-json",
+        action="store_true",
+        help="manifest.json と個別プロンプトを出力 (自動パイプライン用)",
     )
     parser.add_argument(
-        "--host-source-dir", type=str, default=None, help="ホスト側のsource_dirパス (Docker内パス→ホストパス変換用)"
+        "--host-source-dir",
+        type=str,
+        default=None,
+        help="ホスト側のsource_dirパス (Docker内パス→ホストパス変換用)",
     )
     parser.add_argument(
-        "--host-work-dir", type=str, default=None, help="ホスト側のwork_dirパス (Docker内パス→ホストパス変換用)"
+        "--host-work-dir",
+        type=str,
+        default=None,
+        help="ホスト側のwork_dirパス (Docker内パス→ホストパス変換用)",
     )
     parser.add_argument("--create-sample", action="store_true", help="サンプルデータを作成して動作確認")
 
@@ -164,7 +201,8 @@ def main() -> None:
     console.print(f"[green]✓[/green] アーカイブ作成: {archive_path}")
 
     if args.output_json:
-        console.print(f"[green]✓[/green] manifest.json 出力: {args.work_dir / 'manifest.json'}")
+        manifest = args.work_dir / "manifest.json"
+        console.print(f"[green]✓[/green] manifest.json 出力: {manifest}")
 
     # 最終メッセージ
     console.print("\n" + "=" * 80)
