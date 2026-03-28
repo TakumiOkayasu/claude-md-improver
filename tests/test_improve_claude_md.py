@@ -1,25 +1,27 @@
 import json
 from pathlib import Path
 
-from improve_claude_md import (
+from src import (
     DEFAULT_CONFIG,
-    CLAUDEFile,
-    CLAUDEMDImprover,
+    MdImprover,
+    TargetFile,
     _deep_merge,
     load_config,
 )
+from src.prompt_generator import PromptGenerator
+from src.quality_checker import QualityChecker
 
 
-def _make_claude_file(
+def _make_target_file(
     tmp_path: Path,
     *,
     directory_name: str = "project-a",
     content: str = "# Project A\n\nSome content.",
     issues: list[str] | None = None,
     score: int = 85,
-) -> CLAUDEFile:
+) -> TargetFile:
     work_dir = tmp_path / "work"
-    return CLAUDEFile(
+    return TargetFile(
         original_path=Path(f"/source/{directory_name}/CLAUDE.md"),
         backup_path=work_dir / f"{directory_name}_CLAUDE.md",
         directory_name=directory_name,
@@ -30,27 +32,31 @@ def _make_claude_file(
 
 
 class TestGenerateSingleFilePrompt:
-    """generate_single_file_prompt のテスト"""
+    """generate_single_prompt のテスト"""
 
-    def test_returns_prompt_string_from_claude_file(self, tmp_path: Path) -> None:
-        """CLAUDEFileからプロンプト文字列を生成できる"""
-        improver = CLAUDEMDImprover(source_dir=tmp_path, work_dir=tmp_path / "work")
-        file = _make_claude_file(tmp_path, issues=["❌ 必須セクション不足: 技術スタック"])
+    def test_returns_prompt_string_from_target_file(self, tmp_path: Path) -> None:
+        """TargetFileからプロンプト文字列を生成できる"""
+        work_dir = tmp_path / "work"
+        work_dir.mkdir()
+        generator = PromptGenerator(DEFAULT_CONFIG, work_dir)
+        file = _make_target_file(tmp_path, issues=["❌ 必須セクション不足: 技術スタック"])
 
-        result = improver.generate_single_file_prompt(file)
+        result = generator.generate_single(file)
 
         assert isinstance(result, str)
         assert len(result) > 0
 
     def test_prompt_contains_required_sections(self, tmp_path: Path) -> None:
         """プロンプトに改善方針・品質基準・問題点・内容が含まれる"""
-        improver = CLAUDEMDImprover(source_dir=tmp_path, work_dir=tmp_path / "work")
-        file = _make_claude_file(
+        work_dir = tmp_path / "work"
+        work_dir.mkdir()
+        generator = PromptGenerator(DEFAULT_CONFIG, work_dir)
+        file = _make_target_file(
             tmp_path,
             issues=["❌ 必須セクション不足: 技術スタック", "✅ 実例セクションあり"],
         )
 
-        result = improver.generate_single_file_prompt(file)
+        result = generator.generate_single(file)
 
         assert "改善方針" in result
         assert "品質基準" in result
@@ -61,13 +67,14 @@ class TestGenerateSingleFilePrompt:
         assert "project-a" in result
         assert "85/100" in result
 
-    def test_save_single_file_prompt(self, tmp_path: Path) -> None:
+    def test_save_single_prompt(self, tmp_path: Path) -> None:
         """プロンプトファイルが {work_dir}/{dir_name}_PROMPT.md に保存される"""
         work_dir = tmp_path / "work"
-        improver = CLAUDEMDImprover(source_dir=tmp_path, work_dir=work_dir)
-        file = _make_claude_file(tmp_path, content="# Project A\n", score=100)
+        work_dir.mkdir()
+        generator = PromptGenerator(DEFAULT_CONFIG, work_dir)
+        file = _make_target_file(tmp_path, content="# Project A\n", score=100)
 
-        improver.save_single_file_prompt(file)
+        generator.save_single(file)
 
         prompt_path = work_dir / "project-a_PROMPT.md"
         assert prompt_path.exists()
@@ -93,7 +100,7 @@ class TestOutputJson:
         _create_sample_projects(source_dir)
         work_dir = tmp_path / "work"
 
-        improver = CLAUDEMDImprover(source_dir=source_dir, work_dir=work_dir)
+        improver = MdImprover(source_dir=source_dir, work_dir=work_dir)
         improver.run(output_json=True, generate_prompt=False)
 
         manifest_path = work_dir / "manifest.json"
@@ -109,7 +116,7 @@ class TestOutputJson:
         _create_sample_projects(source_dir)
         work_dir = tmp_path / "work"
 
-        improver = CLAUDEMDImprover(source_dir=source_dir, work_dir=work_dir)
+        improver = MdImprover(source_dir=source_dir, work_dir=work_dir)
         improver.run(
             output_json=True,
             generate_prompt=False,
@@ -129,7 +136,7 @@ class TestOutputJson:
         _create_sample_projects(source_dir)
         work_dir = tmp_path / "work"
 
-        improver = CLAUDEMDImprover(source_dir=source_dir, work_dir=work_dir)
+        improver = MdImprover(source_dir=source_dir, work_dir=work_dir)
         improver.run(output_json=True, generate_prompt=False)
 
         data = json.loads((work_dir / "manifest.json").read_text(encoding="utf-8"))
@@ -146,12 +153,73 @@ class TestOutputJson:
         _create_sample_projects(source_dir)
         work_dir = tmp_path / "work"
 
-        improver = CLAUDEMDImprover(source_dir=source_dir, work_dir=work_dir)
+        improver = MdImprover(source_dir=source_dir, work_dir=work_dir)
         improver.run(output_json=True, generate_prompt=False)
 
         data = json.loads((work_dir / "manifest.json").read_text(encoding="utf-8"))
         for entry in data:
             assert entry["profile_name"] == "claude-md"
+
+
+class TestDirectoryNameCollision:
+    """directory_name 衝突バグの再現テスト"""
+
+    def _create_commands_dir(self, source_dir: Path) -> None:
+        """同一ディレクトリに複数 .md ファイルを作成"""
+        commands = source_dir / "commands"
+        commands.mkdir(parents=True)
+        (commands / "fix.md").write_text("# バグ修正ガイド\n\n修正手順を説明。\n")
+        (commands / "feat.md").write_text("# 機能実装ガイド\n\nTDDで実装。\n")
+        (commands / "commit.md").write_text("# コミット準備\n\nコミットメッセージを生成。\n")
+
+    def test_manifest_directory_names_are_unique(self, tmp_path: Path) -> None:
+        """同一ディレクトリ内の複数ファイルで directory_name が全て異なる"""
+        source_dir = tmp_path / "source"
+        source_dir.mkdir()
+        self._create_commands_dir(source_dir)
+        work_dir = tmp_path / "work"
+
+        improver = MdImprover(source_dir=source_dir, work_dir=work_dir, profiles=["command-md"])
+        improver.run(output_json=True, generate_prompt=False)
+
+        data = json.loads((work_dir / "manifest.json").read_text(encoding="utf-8"))
+        dir_names = [entry["directory_name"] for entry in data]
+        assert len(dir_names) == len(set(dir_names)), f"directory_name に重複あり: {dir_names}"
+
+    def test_prompt_files_created_per_file(self, tmp_path: Path) -> None:
+        """同一ディレクトリ内の各ファイルに個別の _PROMPT.md が生成される"""
+        source_dir = tmp_path / "source"
+        source_dir.mkdir()
+        self._create_commands_dir(source_dir)
+        work_dir = tmp_path / "work"
+
+        improver = MdImprover(source_dir=source_dir, work_dir=work_dir, profiles=["command-md"])
+        improver.run(output_json=True, generate_prompt=False)
+
+        prompt_files = list(work_dir.glob("*_PROMPT.md"))
+        data = json.loads((work_dir / "manifest.json").read_text(encoding="utf-8"))
+        assert len(prompt_files) == len(data), (
+            f"PROMPTファイル数({len(prompt_files)}) != manifestエントリ数({len(data)})"
+        )
+
+    def test_each_prompt_contains_correct_content(self, tmp_path: Path) -> None:
+        """各PROMPTファイルが対応するファイルの内容を含む"""
+        source_dir = tmp_path / "source"
+        source_dir.mkdir()
+        self._create_commands_dir(source_dir)
+        work_dir = tmp_path / "work"
+
+        improver = MdImprover(source_dir=source_dir, work_dir=work_dir, profiles=["command-md"])
+        improver.run(output_json=True, generate_prompt=False)
+
+        data = json.loads((work_dir / "manifest.json").read_text(encoding="utf-8"))
+        for entry in data:
+            prompt_path = work_dir / f"{entry['directory_name']}_PROMPT.md"
+            assert prompt_path.exists(), f"{prompt_path} が存在しない"
+            prompt_content = prompt_path.read_text(encoding="utf-8")
+            original_content = Path(entry["original_path"]).read_text(encoding="utf-8")
+            first_line = original_content.splitlines()[0]
+            assert first_line in prompt_content, f"{entry['directory_name']} のPROMPTに元ファイルの内容がない"
 
 
 class TestDeepMerge:
@@ -214,12 +282,12 @@ class TestProfiles:
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("# My Skill\n\n## トリガー条件\ntest\n")
 
-        improver = CLAUDEMDImprover(
+        improver = MdImprover(
             source_dir=source_dir,
             work_dir=tmp_path / "work",
             profiles=["skill-md"],
         )
-        files = improver.find_claude_files()
+        files = improver.find_files()
         assert len(files) == 1
         assert files[0][0].name == "SKILL.md"
         assert files[0][1] == "skill-md"
@@ -232,26 +300,21 @@ class TestProfiles:
         (source_dir / "skill").mkdir(parents=True)
         (source_dir / "skill" / "SKILL.md").write_text("# Skill\n")
 
-        improver = CLAUDEMDImprover(
+        improver = MdImprover(
             source_dir=source_dir,
             work_dir=tmp_path / "work",
             profiles=["claude-md", "skill-md"],
         )
-        files = improver.find_claude_files()
+        files = improver.find_files()
         names = {f[0].name for f in files}
         assert names == {"CLAUDE.md", "SKILL.md"}
 
     def test_skill_md_quality_rules_applied(self, tmp_path: Path) -> None:
         """skill-md プロファイルのルールが適用される"""
-        improver = CLAUDEMDImprover(
-            source_dir=tmp_path,
-            work_dir=tmp_path / "work",
-            profiles=["skill-md"],
-        )
+        checker = QualityChecker(DEFAULT_CONFIG)
         content = "# My Skill\n\nSome content without required sections.\n"
-        issues, score = improver.check_quality(content, "skill-md")
+        issues, score = checker.check(content, "skill-md")
 
-        # トリガー条件と手順/フェーズが不足として検出
         issue_text = " ".join(issues)
         assert "トリガー条件" in issue_text
         assert "手順/フェーズ" in issue_text
@@ -259,32 +322,27 @@ class TestProfiles:
 
     def test_command_md_quality_rules_applied(self, tmp_path: Path) -> None:
         """command-md プロファイルのルールが適用される"""
-        improver = CLAUDEMDImprover(
-            source_dir=tmp_path,
-            work_dir=tmp_path / "work",
-            profiles=["command-md"],
-        )
+        checker = QualityChecker(DEFAULT_CONFIG)
         content = "# My Command\n\n手順: step 1\n入力: args\n"
-        issues, _score = improver.check_quality(content, "command-md")
+        issues, _score = checker.check(content, "command-md")
 
-        # 良い点が検出される
         issue_text = " ".join(issues)
         assert "手順の記述あり" in issue_text
         assert "入出力の明示あり" in issue_text
 
     def test_profile_name_in_claude_file(self, tmp_path: Path) -> None:
-        """process_files で profile_name が CLAUDEFile に設定される"""
+        """process_files で profile_name が TargetFile に設定される"""
         source_dir = tmp_path / "source"
         skill_dir = source_dir / "my-skill"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("# Skill\n")
 
-        improver = CLAUDEMDImprover(
+        improver = MdImprover(
             source_dir=source_dir,
             work_dir=tmp_path / "work",
             profiles=["skill-md"],
         )
-        files = improver.find_claude_files()
+        files = improver.find_files()
         processed = improver.process_files(files)
         assert len(processed) == 1
         assert processed[0].profile_name == "skill-md"
@@ -301,11 +359,11 @@ class TestProfiles:
         broken_dir.mkdir()
         (broken_dir / "CLAUDE.md").symlink_to("/nonexistent/path/CLAUDE.md")
 
-        improver = CLAUDEMDImprover(
+        improver = MdImprover(
             source_dir=source_dir,
             work_dir=tmp_path / "work",
         )
-        files = improver.find_claude_files()
+        files = improver.find_files()
 
         # 壊れたシンボリックリンクは除外され、有効なファイルのみ返る
         assert len(files) == 1
@@ -313,15 +371,13 @@ class TestProfiles:
         assert "proj" in str(files[0][0])
 
     def test_prompt_uses_profile_template(self, tmp_path: Path) -> None:
-        """generate_single_file_prompt がプロファイルのテンプレートを使う"""
-        improver = CLAUDEMDImprover(
-            source_dir=tmp_path,
-            work_dir=tmp_path / "work",
-            profiles=["skill-md"],
-        )
-        file = CLAUDEFile(
+        """PromptGenerator がプロファイルのテンプレートを使う"""
+        work_dir = tmp_path / "work"
+        work_dir.mkdir()
+        generator = PromptGenerator(DEFAULT_CONFIG, work_dir)
+        file = TargetFile(
             original_path=Path("/source/my-skill/SKILL.md"),
-            backup_path=tmp_path / "work" / "my-skill_SKILL.md",
+            backup_path=work_dir / "my-skill_SKILL.md",
             directory_name="my-skill",
             content="# Skill\n",
             issues=["❌ 必須セクション不足: トリガー条件"],
@@ -329,7 +385,7 @@ class TestProfiles:
             profile_name="skill-md",
         )
 
-        result = improver.generate_single_file_prompt(file)
+        result = generator.generate_single(file)
         assert "SKILL.md改善依頼" in result
         assert "トリガー条件を明確に" in result
         assert "トリガー条件" in result

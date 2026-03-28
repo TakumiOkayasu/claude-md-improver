@@ -45,10 +45,10 @@ docker compose run --rm test
 docker compose run --rm test pytest tests/test_improve_claude_md.py::TestProfiles::test_find_skill_md_files -v
 
 # サンプルデータで動作確認
-docker compose run --rm app python improve_claude_md.py --create-sample
+docker compose run --rm app python -m src --create-sample
 
 # デフォルト設定をJSON出力
-docker compose run --rm app python improve_claude_md.py --dump-config
+docker compose run --rm app python -m src --dump-config
 
 # 自動パイプライン (claude CLI必要)
 ./run_improve.sh [source_dir] [work_dir] [--profiles claude-md,skill-md]
@@ -56,27 +56,30 @@ docker compose run --rm app python improve_claude_md.py --dump-config
 
 ## Architecture
 
-単一ファイル構成 (`improve_claude_md.py`):
+`src/` パッケージ構成:
 
-### 設定層
+### 設定層 (`src/config.py`)
 
-- `DEFAULT_CONFIG`: プロファイル別の品質ルール・プロンプトテンプレートを辞書で定義
-- `load_config()`: JSON設定ファイルを読み込みデフォルトとディープマージ
-- `_deep_merge()`: ネスト対応の辞書マージ
+- `DEFAULT_CONFIG`, `load_config()`, `_deep_merge()`
 
-### データ層
+### データ層 (`src/models.py`)
 
-- `CLAUDEFile` (dataclass): ファイル情報保持（パス、内容、スコア、問題点、profile_name）
+- `TargetFile` (dataclass): ファイル情報保持
+- `FoundFile` (NamedTuple): 検索結果
 
-### ロジック層
+### パイプライン層 (`src/pipeline.py`)
 
-- `CLAUDEMDImprover`: メインクラス
-  - `__init__(source_dir, work_dir, config=None, profiles=None)`
-  - `find_claude_files()` → `process_files()` → `show_report()` の流れ
-  - `check_quality(content, profile_name)`: 設定駆動の品質チェック
-  - `generate_ai_prompt()`: 一括AI依頼プロンプト生成
-  - `generate_single_file_prompt()` / `save_single_file_prompt()`: 個別プロンプト生成
-  - `run()`: オーケストレーション
+- `MdImprover`: オーケストレーション
+  - `find_files()` → `process_files()` → `run()`
+  - 操作層に委譲（品質チェック・プロンプト生成・ファイル管理）
+
+### 操作層
+
+- `src/quality_checker.py`: `QualityChecker`
+- `src/prompt_generator.py`: `PromptGenerator`
+- `src/file_manager.py`: `FileManager`
+
+### CLI層 (`src/cli.py`)
 
 ### プロファイル
 

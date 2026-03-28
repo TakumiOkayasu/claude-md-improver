@@ -57,7 +57,7 @@ docker compose -f "${SCRIPT_DIR}/compose.yaml" run --rm \
   -e "SOURCE_DIR=${SOURCE_DIR}" \
   -e "WORK_DIR=${WORK_DIR}" \
   improve \
-  python improve_claude_md.py /source \
+  python -m src /source \
     --work-dir /work \
     --output-json \
     --host-source-dir "${SOURCE_DIR}" \
