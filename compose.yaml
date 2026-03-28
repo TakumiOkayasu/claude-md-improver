@@ -7,7 +7,7 @@ services:
       - ${SOURCE_DIR:-.}:/source:ro
       - ${WORK_DIR:-./tmp_work}:/work
     working_dir: /app
-    command: python improve_claude_md.py /source --work-dir /work
+    command: python -m src /source --work-dir /work
 
   test:
     build: .
@@ -26,7 +26,7 @@ services:
       - ${WORK_DIR:-./tmp_work}:/work
     working_dir: /app
     command: >
-      python improve_claude_md.py /source
+      python -m src /source
       --work-dir /work
       --output-json
       --host-source-dir ${SOURCE_DIR:-.}
