@@ -1,7 +1,14 @@
 import json
 from pathlib import Path
 
-from improve_claude_md import CLAUDEFile, CLAUDEMDImprover
+from improve_claude_md import (
+    CLAUDEFile,
+    CLAUDEMDImprover,
+    DEFAULT_CONFIG,
+    FoundFile,
+    load_config,
+    _deep_merge,
+)
 
 
 def _make_claude_file(
@@ -134,3 +141,181 @@ class TestOutputJson:
             assert required_keys.issubset(entry.keys())
             assert isinstance(entry["score"], int)
             assert isinstance(entry["issues"], list)
+
+    def test_manifest_contains_profile_name(self, tmp_path: Path) -> None:
+        """manifest.json に profile_name フィールドが含まれる"""
+        source_dir = tmp_path / "source"
+        source_dir.mkdir()
+        _create_sample_projects(source_dir)
+        work_dir = tmp_path / "work"
+
+        improver = CLAUDEMDImprover(source_dir=source_dir, work_dir=work_dir)
+        improver.run(output_json=True, generate_prompt=False)
+
+        data = json.loads((work_dir / "manifest.json").read_text(encoding="utf-8"))
+        for entry in data:
+            assert entry["profile_name"] == "claude-md"
+
+
+class TestDeepMerge:
+    """_deep_merge のテスト"""
+
+    def test_shallow_override(self) -> None:
+        base = {"a": 1, "b": 2}
+        override = {"b": 99}
+        result = _deep_merge(base, override)
+        assert result == {"a": 1, "b": 99}
+
+    def test_nested_merge(self) -> None:
+        base = {"x": {"a": 1, "b": 2}}
+        override = {"x": {"b": 99}}
+        result = _deep_merge(base, override)
+        assert result == {"x": {"a": 1, "b": 99}}
+
+    def test_list_replaced_not_merged(self) -> None:
+        base = {"items": [1, 2, 3]}
+        override = {"items": [4, 5]}
+        result = _deep_merge(base, override)
+        assert result == {"items": [4, 5]}
+
+
+class TestLoadConfig:
+    """load_config のテスト"""
+
+    def test_default_config_without_file(self) -> None:
+        """設定ファイルなしでデフォルト設定を返す"""
+        config = load_config(None)
+        assert config["profiles"]["claude-md"]["target_pattern"] == "CLAUDE.md"
+        assert "skill-md" in config["profiles"]
+        assert "command-md" in config["profiles"]
+
+    def test_custom_config_merges(self, tmp_path: Path) -> None:
+        """カスタム設定がデフォルトにマージされる"""
+        config_file = tmp_path / "custom.json"
+        custom = {
+            "profiles": {
+                "claude-md": {
+                    "quality_rules": {"max_lines": 999}
+                }
+            }
+        }
+        config_file.write_text(json.dumps(custom), encoding="utf-8")
+
+        config = load_config(config_file)
+        # カスタム値が反映
+        assert config["profiles"]["claude-md"]["quality_rules"]["max_lines"] == 999
+        # デフォルト値が残る
+        assert config["profiles"]["skill-md"]["target_pattern"] == "SKILL.md"
+
+    def test_nonexistent_file_returns_default(self, tmp_path: Path) -> None:
+        """存在しないファイルを指定するとデフォルト設定を返す"""
+        config = load_config(tmp_path / "nonexistent.json")
+        assert config == DEFAULT_CONFIG
+
+
+class TestProfiles:
+    """複数プロファイルのテスト"""
+
+    def test_find_skill_md_files(self, tmp_path: Path) -> None:
+        """skill-md プロファイルで SKILL.md が見つかる"""
+        source_dir = tmp_path / "source"
+        skill_dir = source_dir / "my-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# My Skill\n\n## トリガー条件\ntest\n")
+
+        improver = CLAUDEMDImprover(
+            source_dir=source_dir,
+            work_dir=tmp_path / "work",
+            profiles=["skill-md"],
+        )
+        files = improver.find_claude_files()
+        assert len(files) == 1
+        assert files[0][0].name == "SKILL.md"
+        assert files[0][1] == "skill-md"
+
+    def test_multiple_profiles(self, tmp_path: Path) -> None:
+        """複数プロファイルで両方のファイルが見つかる"""
+        source_dir = tmp_path / "source"
+        (source_dir / "proj").mkdir(parents=True)
+        (source_dir / "proj" / "CLAUDE.md").write_text("# Proj\n")
+        (source_dir / "skill").mkdir(parents=True)
+        (source_dir / "skill" / "SKILL.md").write_text("# Skill\n")
+
+        improver = CLAUDEMDImprover(
+            source_dir=source_dir,
+            work_dir=tmp_path / "work",
+            profiles=["claude-md", "skill-md"],
+        )
+        files = improver.find_claude_files()
+        names = {f[0].name for f in files}
+        assert names == {"CLAUDE.md", "SKILL.md"}
+
+    def test_skill_md_quality_rules_applied(self, tmp_path: Path) -> None:
+        """skill-md プロファイルのルールが適用される"""
+        improver = CLAUDEMDImprover(
+            source_dir=tmp_path,
+            work_dir=tmp_path / "work",
+            profiles=["skill-md"],
+        )
+        content = "# My Skill\n\nSome content without required sections.\n"
+        issues, score = improver.check_quality(content, "skill-md")
+
+        # トリガー条件と手順/フェーズが不足として検出
+        issue_text = " ".join(issues)
+        assert "トリガー条件" in issue_text
+        assert "手順/フェーズ" in issue_text
+        assert score < 100
+
+    def test_command_md_quality_rules_applied(self, tmp_path: Path) -> None:
+        """command-md プロファイルのルールが適用される"""
+        improver = CLAUDEMDImprover(
+            source_dir=tmp_path,
+            work_dir=tmp_path / "work",
+            profiles=["command-md"],
+        )
+        content = "# My Command\n\n手順: step 1\n入力: args\n"
+        issues, _score = improver.check_quality(content, "command-md")
+
+        # 良い点が検出される
+        issue_text = " ".join(issues)
+        assert "手順の記述あり" in issue_text
+        assert "入出力の明示あり" in issue_text
+
+    def test_profile_name_in_claude_file(self, tmp_path: Path) -> None:
+        """process_files で profile_name が CLAUDEFile に設定される"""
+        source_dir = tmp_path / "source"
+        skill_dir = source_dir / "my-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# Skill\n")
+
+        improver = CLAUDEMDImprover(
+            source_dir=source_dir,
+            work_dir=tmp_path / "work",
+            profiles=["skill-md"],
+        )
+        files = improver.find_claude_files()
+        processed = improver.process_files(files)
+        assert len(processed) == 1
+        assert processed[0].profile_name == "skill-md"
+
+    def test_prompt_uses_profile_template(self, tmp_path: Path) -> None:
+        """generate_single_file_prompt がプロファイルのテンプレートを使う"""
+        improver = CLAUDEMDImprover(
+            source_dir=tmp_path,
+            work_dir=tmp_path / "work",
+            profiles=["skill-md"],
+        )
+        file = CLAUDEFile(
+            original_path=Path("/source/my-skill/SKILL.md"),
+            backup_path=tmp_path / "work" / "my-skill_SKILL.md",
+            directory_name="my-skill",
+            content="# Skill\n",
+            issues=["❌ 必須セクション不足: トリガー条件"],
+            score=60,
+            profile_name="skill-md",
+        )
+
+        result = improver.generate_single_file_prompt(file)
+        assert "SKILL.md改善依頼" in result
+        assert "トリガー条件を明確に" in result
+        assert "トリガー条件" in result

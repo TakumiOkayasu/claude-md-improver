@@ -1,15 +1,19 @@
 #!/bin/bash
 set -euo pipefail
 
-# CLAUDE.md自動改善パイプライン
+# AI設定ファイル自動改善パイプライン
 # Phase 1: 収集+採点 (Docker)
 # Phase 2: AI改善 (claude CLI)
 # Phase 3: diff プレビュー
 # Phase 4: バックアップ + 上書き
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export UID="$(id -u)"
+export GID="$(id -g)"
 SOURCE_DIR="${1:-$HOME/prog}"
 WORK_DIR="${2:-$HOME/prog/tmp_claude}"
+shift 2 2>/dev/null || true
+EXTRA_ARGS=("$@")
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 
 # 色定義
@@ -20,7 +24,7 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 echo -e "${BLUE}================================================${NC}"
-echo -e "${BLUE}  CLAUDE.md 自動改善パイプライン${NC}"
+echo -e "${BLUE}  AI設定ファイル自動改善パイプライン${NC}"
 echo -e "${BLUE}================================================${NC}"
 echo -e "  対象: ${SOURCE_DIR}"
 echo -e "  作業: ${WORK_DIR}"
@@ -39,14 +43,16 @@ echo -e "${BLUE}[Phase 1] 収集+採点${NC}"
 
 mkdir -p "${WORK_DIR}"
 
-docker run --rm \
-  -v "${SOURCE_DIR}:/source:ro" \
-  -v "${WORK_DIR}:/work" \
-  -v "${SCRIPT_DIR}:/app:ro" \
-  -e "HOST_SOURCE_DIR=${SOURCE_DIR}" \
-  -e "HOST_WORK_DIR=${WORK_DIR}" \
-  python:slim \
-  sh -c 'pip install -q rich && python /app/improve_claude_md.py /source --work-dir /work --output-json --host-source-dir "$HOST_SOURCE_DIR" --host-work-dir "$HOST_WORK_DIR" --no-prompt'
+docker compose -f "${SCRIPT_DIR}/compose.yaml" run --rm \
+  -e "SOURCE_DIR=${SOURCE_DIR}" \
+  -e "WORK_DIR=${WORK_DIR}" \
+  improve \
+  python improve_claude_md.py /source \
+    --work-dir /work \
+    --output-json \
+    --host-source-dir "${SOURCE_DIR}" \
+    --host-work-dir "${WORK_DIR}" \
+    --no-prompt "${EXTRA_ARGS[@]}"
 
 if [ ! -f "${WORK_DIR}/manifest.json" ]; then
   echo -e "${RED}manifest.json が見つかりません。Phase 1 失敗。${NC}"
@@ -62,7 +68,7 @@ echo ""
 # ==============================
 echo -e "${BLUE}[Phase 2] AI改善${NC}"
 
-SYSTEM_PROMPT="あなたはCLAUDE.mdの品質改善専門家です。入力されたプロンプトに従い、改善後のCLAUDE.mdの内容のみを出力してください。説明やコメントは不要です。マークダウン形式で、# から始めてください。"
+SYSTEM_PROMPT="あなたはAI設定ファイルの品質改善専門家です。入力されたプロンプトに従い、改善後のファイルの内容のみを出力してください。説明やコメントは不要です。マークダウン形式で、# から始めてください。"
 
 while read -r DIR_NAME; do
   PROMPT_FILE="${WORK_DIR}/${DIR_NAME}_PROMPT.md"
@@ -147,7 +153,8 @@ while IFS='|' read -r DIR_NAME ORIGINAL_PATH; do
   fi
 
   # バックアップ
-  cp "${ORIGINAL_PATH}" "${BACKUP_DIR}/${DIR_NAME}_CLAUDE.md"
+  ORIG_FILENAME="$(basename "${ORIGINAL_PATH}")"
+  cp "${ORIGINAL_PATH}" "${BACKUP_DIR}/${DIR_NAME}_${ORIG_FILENAME}"
 
   # 上書き
   cp "${IMPROVED_FILE}" "${ORIGINAL_PATH}"

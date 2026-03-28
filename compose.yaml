@@ -1,0 +1,31 @@
+services:
+  app:
+    build: .
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - .:/app:ro
+    working_dir: /app
+
+  test:
+    build: .
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - .:/app:ro
+    working_dir: /app
+    command: pytest tests/ -v
+
+  improve:
+    build: .
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - .:/app:ro
+      - ${SOURCE_DIR:-.}:/source:ro
+      - ${WORK_DIR:-./tmp_work}:/work
+    working_dir: /app
+    command: >
+      python improve_claude_md.py /source
+      --work-dir /work
+      --output-json
+      --host-source-dir ${SOURCE_DIR:-.}
+      --host-work-dir ${WORK_DIR:-./tmp_work}
+      --no-prompt
