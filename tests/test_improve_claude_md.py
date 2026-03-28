@@ -289,6 +289,29 @@ class TestProfiles:
         assert len(processed) == 1
         assert processed[0].profile_name == "skill-md"
 
+    def test_broken_symlink_skipped(self, tmp_path: Path) -> None:
+        """壊れたシンボリックリンクは除外される"""
+        source_dir = tmp_path / "source"
+        proj_dir = source_dir / "proj"
+        proj_dir.mkdir(parents=True)
+        (proj_dir / "CLAUDE.md").write_text("# Proj\n")
+
+        # 壊れたシンボリックリンクを作成（リンク先が存在しない）
+        broken_dir = source_dir / "broken"
+        broken_dir.mkdir()
+        (broken_dir / "CLAUDE.md").symlink_to("/nonexistent/path/CLAUDE.md")
+
+        improver = CLAUDEMDImprover(
+            source_dir=source_dir,
+            work_dir=tmp_path / "work",
+        )
+        files = improver.find_claude_files()
+
+        # 壊れたシンボリックリンクは除外され、有効なファイルのみ返る
+        assert len(files) == 1
+        assert files[0][0].name == "CLAUDE.md"
+        assert "proj" in str(files[0][0])
+
     def test_prompt_uses_profile_template(self, tmp_path: Path) -> None:
         """generate_single_file_prompt がプロファイルのテンプレートを使う"""
         improver = CLAUDEMDImprover(
