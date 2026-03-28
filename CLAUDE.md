@@ -26,6 +26,15 @@ AI改善用のプロンプトとZIPを生成する。
 - pytest (テスト)
 - Docker / Docker Compose (テスト・手動モード・自動パイプラインで使用)
 
+## Docker ボリューム
+
+| 環境変数 | コンテナパス | デフォルト |
+|----------|-------------|-----------|
+| `SOURCE_DIR` | `/source` (ro) | カレントディレクトリ |
+| `WORK_DIR` | `/work` | `./tmp_work` |
+
+`--work-dir` には `/work` を指定すること。マウント外パスは出力が消失する。
+
 ## Commands
 
 ```bash

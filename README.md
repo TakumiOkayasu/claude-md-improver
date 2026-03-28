@@ -52,6 +52,18 @@ docker compose run --rm app python improve_claude_md.py --create-sample
 コンテナ内では `/source` にホストのディレクトリがマウントされる。
 対象ディレクトリは環境変数 `SOURCE_DIR` で指定（デフォルト: カレントディレクトリ）。
 
+> **注意: Docker内のパスについて**
+>
+> compose.yaml で定義されたボリュームマウントは以下の通り:
+>
+> | 環境変数 | コンテナパス | デフォルト |
+> |----------|-------------|-----------|
+> | `SOURCE_DIR` | `/source` (読み取り専用) | カレントディレクトリ |
+> | `WORK_DIR` | `/work` | `./tmp_work` |
+>
+> `--work-dir` には必ずマウント済みのパス (`/work`) を指定すること。
+> `/tmp/work` 等のマウント外パスを指定すると、コンテナ削除時に出力が消失する。
+
 ```bash
 # 基本: カレントディレクトリを分析
 docker compose run --rm app python improve_claude_md.py /source
