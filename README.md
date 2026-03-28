@@ -1,316 +1,164 @@
-# CLAUDE.md 品質改善ツール (AI支援版)
+# AI設定ファイル品質改善ツール
 
-`~/prog/` 以下のローカル `CLAUDE.md` を収集し、ZIP化してAIに改善を依頼するツール
+CLAUDE.md / SKILL.md / commands/*.md を収集し、プロファイル別の品質チェック・スコアリングを行い、AI改善用プロンプトを生成するツール。
 
 ## 概要
 
-このツールは**AI (Claude) に改善作業を依頼する**ためのヘルパーです。
-
 ### ワークフロー
 
+2つの実行モードがある。
+
+**手動モード** (`docker compose run --rm app`):
+
+```text
+1. [ツール] ファイル収集 → 品質チェック → ZIP化 + プロンプト生成
+2. [人間]   ZIPとプロンプトをAIに送信
+3. [AI]     各ファイルを改善して返却
+4. [人間]   改善版を各プロジェクトに配置
 ```
-1. [ツール] CLAUDE.mdを収集 → ZIP化
-2. [ツール] 品質チェック → AI依頼プロンプト生成
-3. [人間]   ZIPとプロンプトをAIに送信
-4. [AI]     各CLAUDE.mdを改善して返却
-5. [人間]   改善版を各プロジェクトに配置
+
+**自動パイプライン** (`run_improve.sh`):
+
+```text
+1. [Docker]  ファイル収集 → 品質チェック → manifest.json + 個別プロンプト生成
+2. [claude]  個別プロンプトを claude CLI (sonnet) で改善
+3. [diff]    元ファイルと改善版の差分表示
+4. [cp]      バックアップ後に元ファイルを上書き
 ```
 
-## 機能
+## 必要要件
 
-1. **CLAUDE.md収集**: `~/prog/` 以下の全CLAUDE.mdを検索
-2. **リネーム**: `(directory_name)_CLAUDE.md` に変更
-3. **品質チェック**: 必須セクション、禁止事項、曖昧な表現をチェック
-4. **ZIP化**: 全ファイルをZIPアーカイブに圧縮
-5. **AI依頼プロンプト生成**: 改善指示を含むプロンプトを自動生成
+- Docker / Docker Compose
+- jaq または jq（自動パイプライン使用時）
+- claude CLI（自動パイプライン使用時）
 
-## セットアップ
-
-### 必要要件
-
-- Python 3.10+
-- uv
-
-### インストール
+## クイックスタート
 
 ```bash
-# ZIPを展開
-unzip claude-md-improver.zip
-cd claude_md_improver
+# ビルド
+docker compose build
 
-# 実行スクリプトで自動セットアップ
-chmod +x run.sh
-./run.sh
+# CLAUDE.md の品質チェック（カレントディレクトリ）
+docker compose run --rm app python improve_claude_md.py .
 
-# または手動セットアップ
-uv venv --python 3.10
-source .venv/bin/activate
-uv pip install -r requirements.txt
-python improve_claude_md.py
+# サンプルデータで動作確認
+docker compose run --rm app python improve_claude_md.py --create-sample
 ```
 
-## 使用方法
+## 使い方
 
-### 基本的な使い方
+### 手動モード
 
 ```bash
-# 1. CLAUDE.mdを収集して品質チェック + ZIP化
-python improve_claude_md.py
+# 基本: カレントディレクトリを分析
+docker compose run --rm app python improve_claude_md.py .
 
-# 2. 出力ファイルを確認
-ls ~/prog/tmp_claude/
-# - AI_IMPROVEMENT_REQUEST.md  (AI依頼プロンプト)
-# - claude_md_files_*.zip       (全CLAUDE.mdのZIP)
-# - *_CLAUDE.md                 (個別ファイル)
+# ディレクトリと出力先を指定
+docker compose run --rm app python improve_claude_md.py /path/to/projects --work-dir /path/to/output
 
-# 3. AI_IMPROVEMENT_REQUEST.mdとZIPをAIに送信
-# (AIに改善を依頼)
+# CLAUDE.md + SKILL.md を対象
+docker compose run --rm app python improve_claude_md.py . --profiles claude-md,skill-md
 
-# 4. AI改善後のファイルを各プロジェクトに配置
-cp ~/prog/tmp_claude/project-a_CLAUDE.md ~/prog/project-a/CLAUDE.md
-cp ~/prog/tmp_claude/project-b_CLAUDE.md ~/prog/project-b/CLAUDE.md
+# 全プロファイル
+docker compose run --rm app python improve_claude_md.py . --profiles claude-md,skill-md,command-md
+
+# レポートのみ（プロンプト生成スキップ）
+docker compose run --rm app python improve_claude_md.py . --no-prompt
 ```
 
 ### 自動パイプライン
 
-Docker と claude CLI を使い、収集から改善・上書きまでを自動実行する。
-
 ```bash
-# 前提: Docker, claude CLI がインストール済み
-
-# デフォルト (~/prog 以下を対象)
+# デフォルト（~/prog 以下を対象）
 ./run_improve.sh
 
 # ディレクトリ指定
 ./run_improve.sh /path/to/projects /path/to/workdir
+
+# プロファイル指定
+./run_improve.sh /path/to/projects /path/to/workdir --profiles claude-md,skill-md
 ```
 
 4フェーズで動作:
 
 | Phase | 内容 | 実行環境 |
 |-------|------|----------|
-| 1 | CLAUDE.md収集 + 品質採点 + manifest.json生成 | Docker (python:slim) |
+| 1 | ファイル収集 + 品質採点 + manifest.json生成 | Docker |
 | 2 | 個別プロンプトを claude CLI (sonnet) で改善 | ホスト |
 | 3 | 元ファイルと改善版の diff 表示 | ホスト |
 | 4 | バックアップ後に元ファイルを上書き | ホスト |
 
 バックアップは `{work_dir}/backups_{timestamp}/` に保存される。
 
-### サンプルデータで動作確認
+### ローカル実行（Docker不要）
 
 ```bash
-# サンプルデータ作成して実行
-python improve_claude_md.py --create-sample
-
-# 出力確認
-cat /tmp/claude_sample_prog/tmp_claude/AI_IMPROVEMENT_REQUEST.md
-unzip -l /tmp/claude_sample_prog/tmp_claude/claude_md_files_*.zip
+# uv が必要
+./run.sh
 ```
 
-### オプション
+## プロファイル
 
-- `source_dir`: 検索元ディレクトリ (デフォルト: ~/prog)
-- `--work-dir`: 作業ディレクトリ (デフォルト: ~/prog/tmp_claude)
-- `--no-prompt`: AI依頼プロンプトを生成しない
-- `--create-sample`: サンプルデータで動作確認
+対象ファイルの種別ごとに品質ルールを切り替える。デフォルトは `claude-md` のみ。
 
-## 品質チェック項目
+| プロファイル | 対象パターン | 必須項目 | 推奨項目 |
+|-------------|------------|---------|---------|
+| `claude-md` | `CLAUDE.md` | プロジェクト概要、技術スタック | 禁止事項、コード例、コマンド例 |
+| `skill-md` | `SKILL.md` | トリガー条件、手順/フェーズ | 出力形式、前提条件 |
+| `command-md` | `*.md` (commands/) | タイトル | 手順、入出力 |
 
-### 必須セクション
+## CLIオプション
 
-- プロジェクト概要
-- 技術スタック
+| フラグ | 用途 | デフォルト |
+|--------|------|-----------|
+| `source_dir` | 検索元ディレクトリ | `~/prog` |
+| `--work-dir` | 作業ディレクトリ | `~/prog/tmp_claude` |
+| `--profiles` | 使用プロファイル（カンマ区切り） | `claude-md` |
+| `--config` | JSON設定ファイルパス | デフォルト設定 |
+| `--dump-config` | デフォルト設定をJSON出力して終了 | - |
+| `--output-json` | manifest.json + 個別プロンプト出力 | - |
+| `--no-prompt` | AI依頼プロンプト生成スキップ | - |
+| `--create-sample` | サンプルデータで動作確認 | - |
+| `--host-source-dir` | Docker内→ホストパス変換（source） | - |
+| `--host-work-dir` | Docker内→ホストパス変換（work） | - |
 
-### 推奨事項
-
-- 禁止事項の明示
-- コード例・コマンド例
-- 実例セクション
-- スキル参照
-
-### 避けるべき表現
-
-- 曖昧な表現: "できるだけ", "なるべく", "適宜"
-- 不確実な表現: "多分", "たぶん", "おそらく"
-
-### スコアリング
-
-- 100点: 完璧
-- 80点以上: 良好
-- 60-79点: 要改善
-- 60点未満: 要修正
-
-## AI改善の指示内容
-
-AI依頼プロンプトには以下の改善指示が含まれます:
-
-### 必須対応
-
-1. **曖昧な表現を明確に**
-   - "できるだけ" → "必ず"
-   - "なるべく" → "必ず"  
-   - "多分", "たぶん", "おそらく" → 削除
-
-2. **禁止事項を明示**
-   - 具体的に記述
-   - 理由も記載
-   - 例: "グローバル変数禁止 (保守性低下のため)"
-
-3. **技術スタックを明記**
-   - 使用言語・フレームワーク
-   - バージョン情報
-
-4. **コマンド例・コード例を追加**
-   - 実行可能な形式
-   - コメント付き
-
-### 推奨対応
-
-1. **プロジェクト概要を追加**
-2. **スキル参照を追加** (グローバルスキルへの参照)
-3. **フロントマター追加**
-   ```yaml
-   ---
-   project: project-name
-   last_updated: 2025-01-17
-   ---
-   ```
-
-### 禁止事項 (AIへの指示)
-
-- 既存の内容を勝手に削除しない
-- プロジェクト固有の情報を推測で追加しない
-- 不明な部分は `[要確認]` とマークする
-
-## AI改善の品質基準
-
-**AIが間違えない・ミスしない・ルールを守る** ための基準:
-
-1. **曖昧な指示は禁止**: 具体的なルールのみ記述
-2. **チェックリスト形式**: AIが自己検証可能に
-3. **禁止事項を明確に**: 理由も併記
-
-## 出力例
-
-```
-================================================================================
-                     品質チェック・改善レポート                      
-================================================================================
-
-                               ファイル一覧                                
-┏━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ プロジェクト ┃ スコア ┃   状態   ┃ パス                     ┃
-┡━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ project-a    │ 65/100 │ 🟡 要改善 │ project-a/CLAUDE.md     │
-│ project-b    │ 85/100 │ 🟢 良好   │ project-b/CLAUDE.md     │
-└──────────────┴────────┴──────────┴─────────────────────────┘
-
-📁 project-a (スコア: 65/100)
-   パス: /tmp/claude_sample_prog/project-a/CLAUDE.md
-   バックアップ: /tmp/claude_sample_prog/tmp_claude/project-a_CLAUDE.md
-   問題点:
-      ❌ 必須セクション不足: 技術スタック
-      ⚠️  曖昧な表現が含まれている
-      ⚠️  不確実な表現が含まれている
-
-平均スコア: 75.0/100
-```
-
-## ワークフロー詳細
-
-### ステップ1: ツール実行
+### 設定カスタマイズ
 
 ```bash
-python improve_claude_md.py
+# デフォルト設定をJSON出力
+docker compose run --rm app python improve_claude_md.py --dump-config > my_rules.json
+
+# 編集後に使用
+docker compose run --rm app python improve_claude_md.py . --config my_rules.json
 ```
 
-**出力**:
-- `~/prog/tmp_claude/AI_IMPROVEMENT_REQUEST.md` - AI依頼プロンプト
-- `~/prog/tmp_claude/claude_md_files_*.zip` - 全CLAUDE.mdのZIP
-- `~/prog/tmp_claude/*_CLAUDE.md` - 個別ファイル (バックアップ)
+## 出力ファイル
 
-### ステップ2: 品質レポート確認
+### 手動モードの出力
 
-ツールが表示する品質レポートを確認:
+| ファイル | 内容 |
+|---------|------|
+| `AI_PROMPT.md` | AI改善依頼プロンプト |
+| `claude_md_files.zip` | 対象ファイル一式 |
 
-```
-                       ファイル一覧                        
-┏━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┓
-┃ プロジェクト ┃ スコア ┃   状態    ┃ パス                ┃
-┡━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━┩
-│ project-b    │ 90/100 │  🟢 良好  │ project-b/CLAUDE.md │
-│ project-a    │ 55/100 │ 🔴 要修正 │ project-a/CLAUDE.md │
-└──────────────┴────────┴───────────┴─────────────────────┘
-```
+### 自動パイプラインの出力
 
-### ステップ3: AIに依頼
+| ファイル | 内容 |
+|---------|------|
+| `manifest.json` | 処理対象ファイル一覧 |
+| `*_PROMPT.md` | ファイル別の改善プロンプト |
+| `*_IMPROVED.md` | AI改善後のファイル |
 
-1. `AI_IMPROVEMENT_REQUEST.md` を開く
-2. ZIPファイルをアップロード
-3. プロンプトをAIに送信
-4. AI改善版を受け取る
-
-### ステップ4: 改善版を配置
+## 開発
 
 ```bash
-# AI改善後のファイルを各プロジェクトに配置
-cp project-a_CLAUDE_improved.md ~/prog/project-a/CLAUDE.md
-cp project-b_CLAUDE_improved.md ~/prog/project-b/CLAUDE.md
-```
+# テスト実行
+docker compose run --rm test
 
-### ステップ5: 動作確認
-
-```bash
-# 各プロジェクトで確認
-cd ~/prog/project-a
-cat CLAUDE.md
-
-# 問題なければcommit
-git add CLAUDE.md
-git commit -m "improve: CLAUDE.mdの品質改善"
-```
-
-## 注意事項
-
-- バックアップは `work_dir` に保存されます
-- `--apply` なしでは元のファイルは変更されません
-- 改善内容は保守的 (既存内容の削除はしない)
-- 自動修正が不適切な場合は手動で調整してください
-
-## トラブルシューティング
-
-### ファイルが見つからない
-
-```bash
-# ディレクトリを確認
-ls ~/prog/
-find ~/prog -name "CLAUDE.md"
-```
-
-### 権限エラー
-
-```bash
-# 権限確認
-ls -la ~/prog/project-a/CLAUDE.md
-
-# 権限付与
-chmod 644 ~/prog/project-a/CLAUDE.md
-```
-
-### Python 3.14が見つからない
-
-```bash
-# uvでPython 3.14をインストール
-uv python install 3.14
-
-# 環境作成
-uv venv --python 3.14
+# 単一テスト
+docker compose run --rm test pytest tests/test_improve_claude_md.py::TestProfiles -v
 ```
 
 ## ライセンス
 
 MIT License
-
-## 貢献
-
-Issue / Pull Request 歓迎
