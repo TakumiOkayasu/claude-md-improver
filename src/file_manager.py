@@ -22,15 +22,16 @@ class FileManager:
         self.config = config
 
     def find(self, active_profiles: List[str]) -> List[FoundFile]:
-        """対象ファイルを検索"""
+        """対象ファイルを検索（プロファイル順で優先、重複排除）"""
         results: List[FoundFile] = []
         exclude: Set[str] = set(self.config.get("exclude_dirs", []))
+        seen: Set[Path] = set()
         for pname in active_profiles:
             profile = self.config["profiles"][pname]
             pattern = profile["target_pattern"]
             display = profile["display_name"]
             console.print(f"[cyan]{display}ファイルを検索中...[/cyan]")
-            files = []
+            count = 0
             for f in self.source_dir.rglob(pattern):
                 if not f.exists():
                     reason = "壊れたシンボリックリンク" if f.is_symlink() else "アクセス不可"
@@ -38,10 +39,13 @@ class FileManager:
                     continue
                 if any(part in exclude for part in f.parts):
                     continue
-                files.append(f)
-            for f in files:
+                key = f.resolve() if f.is_symlink() else f
+                if key in seen:
+                    continue
+                seen.add(key)
                 results.append(FoundFile(f, pname))
-            console.print(f"[green]✓[/green] {len(files)}個の{display}を発見")
+                count += 1
+            console.print(f"[green]✓[/green] {count}個の{display}を発見")
         return results
 
     def backup(self, file_path: Path) -> "tuple[Path, str]":
