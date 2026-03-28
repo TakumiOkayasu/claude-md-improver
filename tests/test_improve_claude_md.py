@@ -3,8 +3,8 @@ from pathlib import Path
 
 from src import (
     DEFAULT_CONFIG,
-    TargetFile,
     MdImprover,
+    TargetFile,
     _deep_merge,
     load_config,
 )

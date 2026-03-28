@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Set
 
 from rich.console import Console
 
-from .models import TargetFile, FoundFile
+from .models import FoundFile, TargetFile
 
 console = Console()
 
