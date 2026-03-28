@@ -64,7 +64,7 @@ class MdImprover:
             task = progress.add_task("処理中...", total=len(files))
 
             for found in files:
-                backup_path, dir_name = self._file_manager.backup(found.path)
+                backup_path, dir_name, display_name = self._file_manager.backup(found.path, found.profile_name)
                 content = found.path.read_text(encoding="utf-8")
                 issues, score = self._quality_checker.check(content, found.profile_name)
 
@@ -73,6 +73,7 @@ class MdImprover:
                         original_path=found.path,
                         backup_path=backup_path,
                         directory_name=dir_name,
+                        display_name=display_name,
                         content=content,
                         issues=issues,
                         score=score,

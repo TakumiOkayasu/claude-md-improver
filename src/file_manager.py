@@ -48,13 +48,21 @@ class FileManager:
             console.print(f"[green]✓[/green] {count}個の{display}を発見")
         return results
 
-    def backup(self, file_path: Path) -> "tuple[Path, str]":
-        """ファイルをバックアップし、(backup_path, directory_name) を返す"""
+    def backup(self, file_path: Path, profile_name: str) -> "tuple[Path, str, str]":
+        """ファイルをバックアップし、(backup_path, directory_name, display_name) を返す"""
         dir_name = f"{file_path.parent.name}_{file_path.stem}"
         backup_name = f"{dir_name}{file_path.suffix}"
         backup_path = self.work_dir / backup_name
         shutil.copy2(file_path, backup_path)
-        return backup_path, dir_name
+        display_name = self._make_display_name(file_path, profile_name)
+        return backup_path, dir_name, display_name
+
+    @staticmethod
+    def _make_display_name(file_path: Path, profile_name: str) -> str:
+        """プロファイルに応じた表示名を生成"""
+        if profile_name == "command-md":
+            return file_path.stem
+        return file_path.parent.name
 
     def restore(self, processed: List[TargetFile], dry_run: bool = True) -> None:
         """ファイルを元の場所に戻す"""

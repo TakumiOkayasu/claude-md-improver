@@ -33,7 +33,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 ],
             },
             "prompt_template": {
-                "title": "CLAUDE.md改善依頼: {directory_name}",
+                "title": "CLAUDE.md改善依頼: {display_name}",
                 "improvement_guidelines": [
                     "曖昧な表現を明確に (「できるだけ」→「必ず」、「多分」→削除)",
                     "禁止事項を明示 (具体的に、理由も記載)",
@@ -56,7 +56,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 ],
                 "output_instruction": (
                     "改善後のCLAUDE.mdの内容のみを出力してください。説明やコメントは不要です。\n"
-                    "マークダウン形式で、`#` から始めてください。"
+                    "元のファイルにYAMLフロントマター(---で囲まれたブロック)がある場合は、そのまま保持してください。\n"
+                    "フロントマターがない場合は、`#` から始めてください。"
                 ),
             },
         },
@@ -92,7 +93,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 ],
             },
             "prompt_template": {
-                "title": "SKILL.md改善依頼: {directory_name}",
+                "title": "SKILL.md改善依頼: {display_name}",
                 "improvement_guidelines": [
                     "トリガー条件を明確に（どの場面で発動するか）",
                     "手順をステップバイステップで記述",
@@ -115,7 +116,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 ],
                 "output_instruction": (
                     "改善後のSKILL.mdの内容のみを出力してください。説明やコメントは不要です。\n"
-                    "マークダウン形式で、`#` から始めてください。"
+                    "元のファイルにYAMLフロントマター(---で囲まれたブロック)がある場合は、そのまま保持してください。\n"
+                    "フロントマターがない場合は、`#` から始めてください。"
                 ),
             },
         },
@@ -140,7 +142,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 ],
             },
             "prompt_template": {
-                "title": "command改善依頼: {directory_name}",
+                "title": "command改善依頼: {display_name}",
                 "improvement_guidelines": [
                     "処理手順を明確に記述",
                     "入出力を明示",
@@ -160,7 +162,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 ],
                 "output_instruction": (
                     "改善後のコマンドファイルの内容のみを出力してください。説明やコメントは不要です。\n"
-                    "マークダウン形式で、`#` から始めてください。"
+                    "元のファイルにYAMLフロントマター(---で囲まれたブロック)がある場合は、そのまま保持してください。\n"
+                    "フロントマターがない場合は、`#` から始めてください。"
                 ),
             },
         },

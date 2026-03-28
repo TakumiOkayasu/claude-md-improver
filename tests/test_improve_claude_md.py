@@ -16,6 +16,7 @@ def _make_target_file(
     tmp_path: Path,
     *,
     directory_name: str = "project-a",
+    display_name: str = "project-a",
     content: str = "# Project A\n\nSome content.",
     issues: list[str] | None = None,
     score: int = 85,
@@ -25,6 +26,7 @@ def _make_target_file(
         original_path=Path(f"/source/{directory_name}/CLAUDE.md"),
         backup_path=work_dir / f"{directory_name}_CLAUDE.md",
         directory_name=directory_name,
+        display_name=display_name,
         content=content,
         issues=issues if issues is not None else [],
         score=score,
@@ -456,7 +458,8 @@ class TestProfiles:
         file = TargetFile(
             original_path=Path("/source/my-skill/SKILL.md"),
             backup_path=work_dir / "my-skill_SKILL.md",
-            directory_name="my-skill",
+            directory_name="my-skill_SKILL",
+            display_name="my-skill",
             content="# Skill\n",
             issues=["❌ 必須セクション不足: トリガー条件"],
             score=60,
@@ -464,6 +467,86 @@ class TestProfiles:
         )
 
         result = generator.generate_single(file)
-        assert "SKILL.md改善依頼" in result
+        assert "SKILL.md改善依頼: my-skill" in result
         assert "トリガー条件を明確に" in result
         assert "トリガー条件" in result
+
+
+class TestDisplayName:
+    """Bug 1: display_name によるプロンプトタイトル修正"""
+
+    def test_command_md_display_name_is_file_stem(self, tmp_path: Path) -> None:
+        """command-md の display_name はファイルの stem (例: fix)"""
+        source_dir = tmp_path / "source"
+        commands_dir = source_dir / "commands"
+        commands_dir.mkdir(parents=True)
+        (commands_dir / "fix.md").write_text("# Fix\n")
+        work_dir = tmp_path / "work"
+
+        improver = MdImprover(
+            source_dir=source_dir,
+            work_dir=work_dir,
+            profiles=["command-md"],
+        )
+        files = improver.find_files()
+        processed = improver.process_files(files)
+        assert processed[0].display_name == "fix"
+
+    def test_skill_md_display_name_is_parent_dir(self, tmp_path: Path) -> None:
+        """skill-md の display_name は親ディレクトリ名 (例: consultation)"""
+        source_dir = tmp_path / "source"
+        skill_dir = source_dir / "consultation"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# Consultation\n")
+        work_dir = tmp_path / "work"
+
+        improver = MdImprover(
+            source_dir=source_dir,
+            work_dir=work_dir,
+            profiles=["skill-md"],
+        )
+        files = improver.find_files()
+        processed = improver.process_files(files)
+        assert processed[0].display_name == "consultation"
+
+    def test_command_md_prompt_title_uses_display_name(self, tmp_path: Path) -> None:
+        """command-md のプロンプトタイトルが display_name を使用する"""
+        work_dir = tmp_path / "work"
+        work_dir.mkdir()
+        generator = PromptGenerator(DEFAULT_CONFIG, work_dir)
+        file = TargetFile(
+            original_path=Path("/source/commands/fix.md"),
+            backup_path=work_dir / "commands_fix.md",
+            directory_name="commands_fix",
+            display_name="fix",
+            content="# Fix\n",
+            issues=[],
+            score=100,
+            profile_name="command-md",
+        )
+
+        result = generator.generate_single(file)
+        assert "command改善依頼: fix" in result
+        assert "commands_fix" not in result.split("\n")[0]
+
+
+class TestFrontmatterPreservation:
+    """Bug 3: output_instruction がフロントマター保持を指示する"""
+
+    def test_skill_md_output_instruction_mentions_frontmatter(self) -> None:
+        """skill-md の output_instruction にフロントマター保持指示がある"""
+        tmpl = DEFAULT_CONFIG["profiles"]["skill-md"]["prompt_template"]
+        instruction = tmpl["output_instruction"]
+        assert "フロントマター" in instruction
+
+    def test_command_md_output_instruction_mentions_frontmatter(self) -> None:
+        """command-md の output_instruction にフロントマター保持指示がある"""
+        tmpl = DEFAULT_CONFIG["profiles"]["command-md"]["prompt_template"]
+        instruction = tmpl["output_instruction"]
+        assert "フロントマター" in instruction
+
+    def test_claude_md_output_instruction_mentions_frontmatter(self) -> None:
+        """claude-md の output_instruction にフロントマター保持指示がある"""
+        tmpl = DEFAULT_CONFIG["profiles"]["claude-md"]["prompt_template"]
+        instruction = tmpl["output_instruction"]
+        assert "フロントマター" in instruction
