@@ -7,7 +7,7 @@
 docker compose build
 
 # 2. 品質チェック実行（カレントディレクトリ）
-docker compose run --rm app python improve_claude_md.py .
+docker compose run --rm app
 
 # 3. サンプルデータで試す
 docker compose run --rm app python improve_claude_md.py --create-sample
@@ -23,10 +23,10 @@ docker compose run --rm app python improve_claude_md.py --create-sample
 
 ```bash
 # CLAUDE.md + SKILL.md を対象
-docker compose run --rm app python improve_claude_md.py . --profiles claude-md,skill-md
+docker compose run --rm app python improve_claude_md.py /source --work-dir /work --profiles claude-md,skill-md
 
 # 全プロファイル
-docker compose run --rm app python improve_claude_md.py . --profiles claude-md,skill-md,command-md
+docker compose run --rm app python improve_claude_md.py /source --work-dir /work --profiles claude-md,skill-md,command-md
 ```
 
 ## 自動パイプライン
