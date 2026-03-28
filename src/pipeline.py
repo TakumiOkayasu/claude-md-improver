@@ -33,9 +33,7 @@ class MdImprover:
         unknown = set(self.active_profiles) - set(self.config["profiles"])
         if unknown:
             raise ValueError(f"不明なプロファイル: {', '.join(sorted(unknown))}")
-        self.active_profiles = self._sort_by_specificity(
-            self.active_profiles, self.config
-        )
+        self.active_profiles = self._sort_by_specificity(self.active_profiles, self.config)
         self.work_dir.mkdir(parents=True, exist_ok=True)
 
         self._file_manager = FileManager(source_dir, work_dir, self.config)
@@ -43,9 +41,7 @@ class MdImprover:
         self._prompt_generator = PromptGenerator(self.config, work_dir)
 
     @staticmethod
-    def _sort_by_specificity(
-        profiles: List[str], config: Dict[str, Any]
-    ) -> List[str]:
+    def _sort_by_specificity(profiles: List[str], config: Dict[str, Any]) -> List[str]:
         """具体パターン優先でソート（ワイルドカードなし→あり、同一特異性は入力順維持）"""
 
         def _has_wildcard(pname: str) -> bool:
