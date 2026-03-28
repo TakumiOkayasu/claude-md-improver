@@ -19,6 +19,7 @@ class TargetFile:
     original_path: Path
     backup_path: Path
     directory_name: str
+    display_name: str
     content: str
     issues: List[str]
     score: int

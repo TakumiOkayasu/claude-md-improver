@@ -110,7 +110,8 @@ while read -r DIR_NAME; do
       continue
     fi
 
-    if [ "${FIRST_CHAR}" != "#" ]; then
+    FIRST_THREE=$(head -c 3 "${IMPROVED_FILE}")
+    if [ "${FIRST_CHAR}" != "#" ] && [ "${FIRST_THREE}" != "---" ]; then
       echo -e "${YELLOW}⚠ マークダウンヘッダーなし、スキップ${NC}"
       rm -f "${IMPROVED_FILE}"
       continue

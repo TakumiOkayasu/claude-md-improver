@@ -22,8 +22,9 @@ class PromptGenerator:
         tmpl = self._get_prompt_template(file.profile_name)
         issues_text = "\n".join(f"- {issue}" for issue in file.problem_issues)
 
-        title = tmpl.get("title", "{directory_name}").format(
+        title = tmpl.get("title", "{display_name}").format(
             directory_name=file.directory_name,
+            display_name=file.display_name,
             target_filename=self.config["profiles"][file.profile_name]["display_name"],
         )
         guidelines = "\n".join(f"- {g}" for g in tmpl.get("improvement_guidelines", []))
