@@ -70,7 +70,7 @@ docker compose run --rm app python -m src --dump-config
 ### パイプライン層 (`src/pipeline.py`)
 
 - `MdImprover`: オーケストレーション
-  - `find_files()` → `process_files()` → `run()`
+  - プロファイル特異性ソート → `find_files()` → `process_files()` → `run()`
   - 操作層に委譲（品質チェック・プロンプト生成・ファイル管理）
 
 ### 操作層

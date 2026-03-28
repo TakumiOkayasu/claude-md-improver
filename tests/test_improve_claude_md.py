@@ -370,6 +370,84 @@ class TestProfiles:
         assert files[0][0].name == "CLAUDE.md"
         assert "proj" in str(files[0][0])
 
+    def test_multi_profile_no_duplicate_files(self, tmp_path: Path) -> None:
+        """3プロファイル同時使用で同一ファイルが重複しない"""
+        source_dir = tmp_path / "source"
+        skill_dir = source_dir / "my-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# Skill\n")
+        proj_dir = source_dir / "proj"
+        proj_dir.mkdir(parents=True)
+        (proj_dir / "CLAUDE.md").write_text("# Proj\n")
+
+        improver = MdImprover(
+            source_dir=source_dir,
+            work_dir=tmp_path / "work",
+            profiles=["claude-md", "skill-md", "command-md"],
+        )
+        files = improver.find_files()
+        paths = [f.path for f in files]
+        assert len(paths) == len(set(paths)), f"重複あり: {paths}"
+        profiles = {f.path.name: f.profile_name for f in files}
+        assert profiles["CLAUDE.md"] == "claude-md"
+        assert profiles["SKILL.md"] == "skill-md"
+
+    def test_command_md_does_not_rematch_skill_md(self, tmp_path: Path) -> None:
+        """SKILL.mdはskill-mdでマッチ済みならcommand-mdでマッチしない"""
+        source_dir = tmp_path / "source"
+        skill_dir = source_dir / "my-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# Skill\n")
+        commands_dir = source_dir / "commands"
+        commands_dir.mkdir(parents=True)
+        (commands_dir / "fix.md").write_text("# Fix\n")
+
+        improver = MdImprover(
+            source_dir=source_dir,
+            work_dir=tmp_path / "work",
+            profiles=["skill-md", "command-md"],
+        )
+        files = improver.find_files()
+        profiles = {f.path.name: f.profile_name for f in files}
+        assert profiles["SKILL.md"] == "skill-md"
+        assert profiles["fix.md"] == "command-md"
+        assert len(files) == 2
+
+    def test_symlink_to_same_file_not_duplicated(self, tmp_path: Path) -> None:
+        """シンボリックリンク経由で同一ファイルを指す場合、重複しない"""
+        source_dir = tmp_path / "source"
+        skill_dir = source_dir / "my-skill"
+        skill_dir.mkdir(parents=True)
+        original = skill_dir / "SKILL.md"
+        original.write_text("# Skill\n")
+        link_dir = source_dir / "link-skill"
+        link_dir.mkdir(parents=True)
+        (link_dir / "SKILL.md").symlink_to(original)
+
+        improver = MdImprover(
+            source_dir=source_dir,
+            work_dir=tmp_path / "work",
+            profiles=["skill-md"],
+        )
+        files = improver.find_files()
+        assert len(files) == 1
+
+    def test_profile_priority_order_is_deterministic(self, tmp_path: Path) -> None:
+        """プロファイル指定順に関係なく、具体パターンが優先される"""
+        source_dir = tmp_path / "source"
+        skill_dir = source_dir / "my-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# Skill\n")
+
+        improver = MdImprover(
+            source_dir=source_dir,
+            work_dir=tmp_path / "work",
+            profiles=["command-md", "skill-md"],
+        )
+        files = improver.find_files()
+        assert len(files) == 1
+        assert files[0].profile_name == "skill-md"
+
     def test_prompt_uses_profile_template(self, tmp_path: Path) -> None:
         """PromptGenerator がプロファイルのテンプレートを使う"""
         work_dir = tmp_path / "work"
