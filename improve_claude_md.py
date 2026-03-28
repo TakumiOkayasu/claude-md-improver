@@ -14,13 +14,14 @@ import copy
 import json
 import re
 import shutil
-from pathlib import Path
-from typing import List, Dict, NamedTuple, Tuple, Any
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, NamedTuple, Tuple
+
 from rich.console import Console
+from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
-from rich.panel import Panel
 
 console = Console()
 
@@ -88,10 +89,18 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "quality_rules": {
                 "required_sections": [
                     {"pattern": r"^#+ .*トリガー|^#+ .*Trigger", "name": "トリガー条件", "penalty": 20},
-                    {"pattern": r"^#+ .*手順|^#+ .*フェーズ|^#+ .*Step|^#+ .*Phase", "name": "手順/フェーズ", "penalty": 20},
+                    {
+                        "pattern": r"^#+ .*手順|^#+ .*フェーズ|^#+ .*Step|^#+ .*Phase",
+                        "name": "手順/フェーズ",
+                        "penalty": 20,
+                    },
                 ],
                 "required_keywords": [
-                    {"keywords": ["禁止", "NEVER", "制約"], "description": "禁止事項/制約が明示されていない", "penalty": 10},
+                    {
+                        "keywords": ["禁止", "NEVER", "制約"],
+                        "description": "禁止事項/制約が明示されていない",
+                        "penalty": 10,
+                    },
                 ],
                 "required_patterns": [],
                 "max_lines": 300,
@@ -196,18 +205,14 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "profile": "claude-md",
             "filename": "CLAUDE.md",
             "content": (
-                "# Project B\n\n## 技術スタック\n- TypeScript\n- React\n\n"
-                "## 禁止事項\n- グローバル変数の使用禁止\n"
+                "# Project B\n\n## 技術スタック\n- TypeScript\n- React\n\n## 禁止事項\n- グローバル変数の使用禁止\n"
             ),
         },
         {
             "name": "project-c",
             "profile": "claude-md",
             "filename": "CLAUDE.md",
-            "content": (
-                "# プロジェクトC\n\nなるべくきれいに書いてください。\n"
-                "おそらく動くと思います。\n"
-            ),
+            "content": ("# プロジェクトC\n\nなるべくきれいに書いてください。\nおそらく動くと思います。\n"),
         },
     ],
 }
@@ -234,6 +239,7 @@ def load_config(config_path: "Path | None" = None) -> Dict[str, Any]:
 
 class FoundFile(NamedTuple):
     """検索で見つかったファイル"""
+
     path: Path
     profile_name: str
 
@@ -241,6 +247,7 @@ class FoundFile(NamedTuple):
 @dataclass
 class CLAUDEFile:
     """対象ファイル情報"""
+
     original_path: Path
     backup_path: Path
     directory_name: str
@@ -273,7 +280,7 @@ class CLAUDEMDImprover:
         if unknown:
             raise ValueError(f"不明なプロファイル: {', '.join(sorted(unknown))}")
         self.work_dir.mkdir(parents=True, exist_ok=True)
-        
+
     def find_claude_files(self) -> List[FoundFile]:
         """対象ファイルを検索"""
         results: List[FoundFile] = []
@@ -283,10 +290,7 @@ class CLAUDEMDImprover:
             pattern = profile["target_pattern"]
             display = profile["display_name"]
             console.print(f"[cyan]{display}ファイルを検索中...[/cyan]")
-            files = [
-                f for f in self.source_dir.rglob(pattern)
-                if not any(part in exclude for part in f.parts)
-            ]
+            files = [f for f in self.source_dir.rglob(pattern) if not any(part in exclude for part in f.parts)]
             for f in files:
                 results.append(FoundFile(f, pname))
             console.print(f"[green]✓[/green] {len(files)}個の{display}を発見")
@@ -299,10 +303,8 @@ class CLAUDEMDImprover:
         backup_path = self.work_dir / backup_name
         shutil.copy2(file_path, backup_path)
         return backup_path
-    
-    def check_quality(
-        self, content: str, profile_name: str = "claude-md"
-    ) -> Tuple[List[str], int]:
+
+    def check_quality(self, content: str, profile_name: str = "claude-md") -> Tuple[List[str], int]:
         """品質チェック (プロファイルのルールを動的適用)"""
         issues: List[str] = []
         score = 100
@@ -350,7 +352,7 @@ class CLAUDEMDImprover:
                     issues.append(f"✅ {gp['description']}")
 
         return issues, max(0, min(100, score))
-    
+
     def _get_prompt_template(self, profile_name: str) -> Dict[str, Any]:
         """プロファイルのプロンプトテンプレートを取得"""
         return self.config["profiles"][profile_name]["prompt_template"]
@@ -358,9 +360,7 @@ class CLAUDEMDImprover:
     def generate_single_file_prompt(self, file: CLAUDEFile) -> str:
         """単一ファイル用のAI改善プロンプトを生成"""
         tmpl = self._get_prompt_template(file.profile_name)
-        issues_text = "\n".join(
-            f"- {issue}" for issue in file.problem_issues
-        )
+        issues_text = "\n".join(f"- {issue}" for issue in file.problem_issues)
 
         title = tmpl.get("title", "{directory_name}").format(
             directory_name=file.directory_name,
@@ -420,15 +420,13 @@ class CLAUDEMDImprover:
         # 改善は行わず、元のコンテンツをそのまま保持
         # AI への依頼プロンプトを生成するだけ
         return content
-    
+
     def process_files(self, files: List[FoundFile]) -> List[CLAUDEFile]:
         """ファイルを処理"""
         processed = []
 
         with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
+            SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
         ) as progress:
             task = progress.add_task("処理中...", total=len(files))
 
@@ -440,61 +438,57 @@ class CLAUDEMDImprover:
                 improved_content = self.improve_content(content, dir_name)
                 backup_path.write_text(improved_content, encoding="utf-8")
 
-                processed.append(CLAUDEFile(
-                    original_path=found.path,
-                    backup_path=backup_path,
-                    directory_name=dir_name,
-                    content=improved_content,
-                    issues=issues,
-                    score=score,
-                    profile_name=found.profile_name,
-                ))
+                processed.append(
+                    CLAUDEFile(
+                        original_path=found.path,
+                        backup_path=backup_path,
+                        directory_name=dir_name,
+                        content=improved_content,
+                        issues=issues,
+                        score=score,
+                        profile_name=found.profile_name,
+                    )
+                )
 
                 progress.update(task, advance=1)
 
         return processed
-    
+
     def show_report(self, processed: List[CLAUDEFile]):
         """レポート表示"""
-        console.print("\n" + "="*80)
-        console.print(Panel.fit(
-            "[bold cyan]品質チェック・改善レポート[/bold cyan]",
-            border_style="cyan"
-        ))
-        
+        console.print("\n" + "=" * 80)
+        console.print(Panel.fit("[bold cyan]品質チェック・改善レポート[/bold cyan]", border_style="cyan"))
+
         # サマリーテーブル
         table = Table(title="ファイル一覧", show_lines=True)
         table.add_column("プロジェクト", style="cyan")
         table.add_column("スコア", justify="center", style="yellow")
         table.add_column("状態", justify="center")
         table.add_column("パス")
-        
+
         for file in processed:
             status = "🟢 良好" if file.score >= 80 else "🟡 要改善" if file.score >= 60 else "🔴 要修正"
             table.add_row(
-                file.directory_name,
-                f"{file.score}/100",
-                status,
-                str(file.original_path.relative_to(self.source_dir))
+                file.directory_name, f"{file.score}/100", status, str(file.original_path.relative_to(self.source_dir))
             )
-        
+
         console.print(table)
-        
+
         # 詳細レポート
         for file in processed:
             console.print(f"\n[bold]📁 {file.directory_name}[/bold] (スコア: {file.score}/100)")
             console.print(f"   パス: {file.original_path}")
             console.print(f"   バックアップ: {file.backup_path}")
-            
+
             if file.issues:
                 console.print("   問題点:")
                 for issue in file.issues:
                     console.print(f"      {issue}")
-        
+
         # 統計
         avg_score = sum(f.score for f in processed) / len(processed) if processed else 0
         console.print(f"\n[bold cyan]平均スコア:[/bold cyan] {avg_score:.1f}/100")
-    
+
     def generate_ai_prompt(self, processed: List[CLAUDEFile]) -> str:
         """AI依頼用プロンプト生成 (一括版)"""
         # プロファイル別にグループ化して方針セクションを構築
@@ -509,11 +503,13 @@ class CLAUDEMDImprover:
         for pname in profiles_used:
             tmpl = self._get_prompt_template(pname)
             display = self.config["profiles"][pname]["display_name"]
-            prompt_parts.extend([
-                f"## {display} の改善方針",
-                "",
-                "### 必須対応",
-            ])
+            prompt_parts.extend(
+                [
+                    f"## {display} の改善方針",
+                    "",
+                    "### 必須対応",
+                ]
+            )
             for g in tmpl.get("improvement_guidelines", []):
                 prompt_parts.append(f"- {g}")
             prompt_parts.extend(["", "### 推奨対応"])
@@ -529,66 +525,72 @@ class CLAUDEMDImprover:
 
         for file in processed:
             display = self.config["profiles"][file.profile_name]["display_name"]
-            prompt_parts.extend([
-                f"## ファイル: {file.directory_name}_{display}",
-                "",
-                f"**元のパス**: `{file.original_path}`",
-                f"**品質スコア**: {file.score}/100",
-                "",
-                "**検出された問題**:",
-            ])
+            prompt_parts.extend(
+                [
+                    f"## ファイル: {file.directory_name}_{display}",
+                    "",
+                    f"**元のパス**: `{file.original_path}`",
+                    f"**品質スコア**: {file.score}/100",
+                    "",
+                    "**検出された問題**:",
+                ]
+            )
             for issue in file.problem_issues:
                 prompt_parts.append(f"- {issue}")
-            prompt_parts.extend([
+            prompt_parts.extend(
+                [
+                    "",
+                    "**現在の内容**:",
+                    "```markdown",
+                    file.content.strip(),
+                    "```",
+                    "",
+                    "---",
+                    "",
+                ]
+            )
+
+        prompt_parts.extend(
+            [
+                "## 出力形式",
                 "",
-                "**現在の内容**:",
+                "各ファイルについて、以下の形式で改善版を出力してください:",
+                "",
                 "```markdown",
-                file.content.strip(),
+                "### {directory_name}_{display_name}",
+                "",
+                "[改善後の内容]",
                 "```",
                 "",
-                "---",
+                "## 改善のポイント",
                 "",
-            ])
-
-        prompt_parts.extend([
-            "## 出力形式",
-            "",
-            "各ファイルについて、以下の形式で改善版を出力してください:",
-            "",
-            "```markdown",
-            "### {directory_name}_{display_name}",
-            "",
-            "[改善後の内容]",
-            "```",
-            "",
-            "## 改善のポイント",
-            "",
-            "各ファイルの改善点を簡潔に説明してください。",
-        ])
+                "各ファイルの改善点を簡潔に説明してください。",
+            ]
+        )
 
         return "\n".join(prompt_parts)
-    
+
     def save_ai_prompt(self, prompt: str) -> Path:
         """AI依頼プロンプトを保存"""
         prompt_file = self.work_dir / "AI_IMPROVEMENT_REQUEST.md"
         prompt_file.write_text(prompt, encoding="utf-8")
         return prompt_file
-    
+
     def restore_files(self, processed: List[CLAUDEFile], dry_run: bool = True):
         """ファイルを元の場所に戻す"""
         if dry_run:
             console.print("\n[yellow]⚠️  ドライランモード: 実際のファイルは変更されません[/yellow]")
             return
-        
+
         console.print("\n[cyan]ファイルを元の場所に復元中...[/cyan]")
-        
+
         for file in processed:
             try:
                 shutil.copy2(file.backup_path, file.original_path)
                 console.print(f"[green]✓[/green] {file.original_path}")
             except Exception as e:
                 console.print(f"[red]✗[/red] {file.original_path}: {e}")
-    
+
     def create_archive(self, processed: List[CLAUDEFile]) -> Path:
         """ZIPアーカイブを作成"""
         import zipfile
@@ -598,13 +600,13 @@ class CLAUDEMDImprover:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         archive_path = self.work_dir / f"{profiles_tag}_files_{timestamp}.zip"
 
-        with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zipf:
             for file in processed:
                 arcname = file.backup_path.name
                 zipf.write(file.backup_path, arcname)
 
         return archive_path
-    
+
     def run(
         self,
         dry_run: bool = True,
@@ -615,13 +617,15 @@ class CLAUDEMDImprover:
     ) -> List[CLAUDEFile]:
         """メイン処理"""
         profiles_label = ", ".join(self.active_profiles)
-        console.print(Panel.fit(
-            f"[bold]AI設定ファイル品質改善ツール[/bold]\n"
-            f"プロファイル: {profiles_label}\n"
-            f"対象: {self.source_dir}\n"
-            f"作業: {self.work_dir}",
-            border_style="blue"
-        ))
+        console.print(
+            Panel.fit(
+                f"[bold]AI設定ファイル品質改善ツール[/bold]\n"
+                f"プロファイル: {profiles_label}\n"
+                f"対象: {self.source_dir}\n"
+                f"作業: {self.work_dir}",
+                border_style="blue",
+            )
+        )
 
         # ファイル検索
         files = self.find_claude_files()
@@ -663,20 +667,18 @@ class CLAUDEMDImprover:
                 original = str(file.original_path)
                 backup = str(file.backup_path)
                 if host_source_dir and host_work_dir:
-                    original = original.replace(
-                        str(self.source_dir), host_source_dir
-                    )
-                    backup = backup.replace(
-                        str(self.work_dir), host_work_dir
-                    )
-                manifest.append({
-                    "directory_name": file.directory_name,
-                    "profile_name": file.profile_name,
-                    "original_path": original,
-                    "backup_path": backup,
-                    "score": file.score,
-                    "issues": file.problem_issues,
-                })
+                    original = original.replace(str(self.source_dir), host_source_dir)
+                    backup = backup.replace(str(self.work_dir), host_work_dir)
+                manifest.append(
+                    {
+                        "directory_name": file.directory_name,
+                        "profile_name": file.profile_name,
+                        "original_path": original,
+                        "backup_path": backup,
+                        "score": file.score,
+                        "issues": file.problem_issues,
+                    }
+                )
                 self.save_single_file_prompt(file)
 
             manifest_path = self.work_dir / "manifest.json"
@@ -716,65 +718,33 @@ def main():
 
   # デフォルト設定を出力
   python improve_claude_md.py --dump-config
-  """
+  """,
     )
     parser.add_argument(
-        "source_dir",
-        type=Path,
-        nargs="?",
-        default=Path.home() / "prog",
-        help="検索元ディレクトリ (デフォルト: ~/prog)"
+        "source_dir", type=Path, nargs="?", default=Path.home() / "prog", help="検索元ディレクトリ (デフォルト: ~/prog)"
     )
     parser.add_argument(
         "--work-dir",
         type=Path,
         default=Path.home() / "prog" / "tmp_claude",
-        help="作業ディレクトリ (デフォルト: ~/prog/tmp_claude)"
+        help="作業ディレクトリ (デフォルト: ~/prog/tmp_claude)",
+    )
+    parser.add_argument("--config", type=Path, default=None, help="設定ファイルパス (JSON形式、省略時はデフォルト設定)")
+    parser.add_argument(
+        "--profiles", type=str, default=None, help="使用プロファイル (カンマ区切り、例: claude-md,skill-md,command-md)"
+    )
+    parser.add_argument("--dump-config", action="store_true", help="デフォルト設定をJSON形式で出力して終了")
+    parser.add_argument("--no-prompt", action="store_true", help="AI依頼プロンプトを生成しない")
+    parser.add_argument(
+        "--output-json", action="store_true", help="manifest.json と個別プロンプトを出力 (自動パイプライン用)"
     )
     parser.add_argument(
-        "--config",
-        type=Path,
-        default=None,
-        help="設定ファイルパス (JSON形式、省略時はデフォルト設定)"
+        "--host-source-dir", type=str, default=None, help="ホスト側のsource_dirパス (Docker内パス→ホストパス変換用)"
     )
     parser.add_argument(
-        "--profiles",
-        type=str,
-        default=None,
-        help="使用プロファイル (カンマ区切り、例: claude-md,skill-md,command-md)"
+        "--host-work-dir", type=str, default=None, help="ホスト側のwork_dirパス (Docker内パス→ホストパス変換用)"
     )
-    parser.add_argument(
-        "--dump-config",
-        action="store_true",
-        help="デフォルト設定をJSON形式で出力して終了"
-    )
-    parser.add_argument(
-        "--no-prompt",
-        action="store_true",
-        help="AI依頼プロンプトを生成しない"
-    )
-    parser.add_argument(
-        "--output-json",
-        action="store_true",
-        help="manifest.json と個別プロンプトを出力 (自動パイプライン用)"
-    )
-    parser.add_argument(
-        "--host-source-dir",
-        type=str,
-        default=None,
-        help="ホスト側のsource_dirパス (Docker内パス→ホストパス変換用)"
-    )
-    parser.add_argument(
-        "--host-work-dir",
-        type=str,
-        default=None,
-        help="ホスト側のwork_dirパス (Docker内パス→ホストパス変換用)"
-    )
-    parser.add_argument(
-        "--create-sample",
-        action="store_true",
-        help="サンプルデータを作成して動作確認"
-    )
+    parser.add_argument("--create-sample", action="store_true", help="サンプルデータを作成して動作確認")
 
     args = parser.parse_args()
 
@@ -807,9 +777,12 @@ def main():
 
     # 実行
     improver = CLAUDEMDImprover(
-        args.source_dir, args.work_dir, config=config, profiles=profiles,
+        args.source_dir,
+        args.work_dir,
+        config=config,
+        profiles=profiles,
     )
-    processed = improver.run(
+    improver.run(
         dry_run=True,
         generate_prompt=not args.no_prompt,
         output_json=args.output_json,
@@ -818,9 +791,9 @@ def main():
     )
 
     # 最終メッセージ
-    console.print("\n" + "="*80)
+    console.print("\n" + "=" * 80)
     console.print("[bold cyan]✓ 処理完了[/bold cyan]")
-    console.print(f"\n📦 成果物:")
+    console.print("\n📦 成果物:")
     console.print(f"  - 作業ディレクトリ: {args.work_dir}")
 
     if not args.no_prompt:

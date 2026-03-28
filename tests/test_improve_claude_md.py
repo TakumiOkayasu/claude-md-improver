@@ -2,12 +2,11 @@ import json
 from pathlib import Path
 
 from improve_claude_md import (
+    DEFAULT_CONFIG,
     CLAUDEFile,
     CLAUDEMDImprover,
-    DEFAULT_CONFIG,
-    FoundFile,
-    load_config,
     _deep_merge,
+    load_config,
 )
 
 
@@ -36,9 +35,7 @@ class TestGenerateSingleFilePrompt:
     def test_returns_prompt_string_from_claude_file(self, tmp_path: Path) -> None:
         """CLAUDEFileからプロンプト文字列を生成できる"""
         improver = CLAUDEMDImprover(source_dir=tmp_path, work_dir=tmp_path / "work")
-        file = _make_claude_file(
-            tmp_path, issues=["❌ 必須セクション不足: 技術スタック"]
-        )
+        file = _make_claude_file(tmp_path, issues=["❌ 必須セクション不足: 技術スタック"])
 
         result = improver.generate_single_file_prompt(file)
 
@@ -192,13 +189,7 @@ class TestLoadConfig:
     def test_custom_config_merges(self, tmp_path: Path) -> None:
         """カスタム設定がデフォルトにマージされる"""
         config_file = tmp_path / "custom.json"
-        custom = {
-            "profiles": {
-                "claude-md": {
-                    "quality_rules": {"max_lines": 999}
-                }
-            }
-        }
+        custom = {"profiles": {"claude-md": {"quality_rules": {"max_lines": 999}}}}
         config_file.write_text(json.dumps(custom), encoding="utf-8")
 
         config = load_config(config_file)
