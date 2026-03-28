@@ -8,8 +8,8 @@ set -euo pipefail
 # Phase 4: バックアップ + 上書き
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export UID="$(id -u)"
-export GID="$(id -g)"
+export DOCKER_UID="$(id -u)"
+export DOCKER_GID="$(id -g)"
 SOURCE_DIR="${1:-$HOME/prog}"
 WORK_DIR="${2:-$HOME/prog/tmp_claude}"
 shift 2 2>/dev/null || true
