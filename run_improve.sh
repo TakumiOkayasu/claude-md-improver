@@ -30,10 +30,20 @@ echo -e "  対象: ${SOURCE_DIR}"
 echo -e "  作業: ${WORK_DIR}"
 echo ""
 
+# jaq (Rust製) 優先、なければ jq にフォールバック
+if command -v jaq &>/dev/null; then
+  JQ=jaq
+elif command -v jq &>/dev/null; then
+  JQ=jq
+else
+  echo -e "${RED}jaq または jq が必要です${NC}" >&2
+  exit 1
+fi
+
 # manifest.json からエントリを読み取るヘルパー
-# $1: Python print式 (変数 e がエントリ辞書)
+# $1: jq フィルタ式
 manifest_entries() {
-  python3 -c "import json,sys; [print($1) for e in json.load(open(sys.argv[1]))]" "${WORK_DIR}/manifest.json"
+  "$JQ" -r "$1" "${WORK_DIR}/manifest.json"
 }
 
 # ==============================
@@ -59,7 +69,7 @@ if [ ! -f "${WORK_DIR}/manifest.json" ]; then
   exit 1
 fi
 
-FILE_COUNT=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))))" "${WORK_DIR}/manifest.json")
+FILE_COUNT=$("$JQ" 'length' "${WORK_DIR}/manifest.json")
 echo -e "${GREEN}✓ ${FILE_COUNT}個のファイルを処理${NC}"
 echo ""
 
@@ -115,7 +125,7 @@ while read -r DIR_NAME; do
 
   # レートリミット対策
   sleep 2
-done < <(manifest_entries "e['directory_name']")
+done < <(manifest_entries '.[].directory_name')
 
 echo ""
 
@@ -135,7 +145,7 @@ while IFS='|' read -r DIR_NAME ORIGINAL_PATH; do
   echo -e "${BLUE}--- ${DIR_NAME} ---${NC}"
   diff --color=always "${ORIGINAL_PATH}" "${IMPROVED_FILE}" || true
   echo ""
-done < <(manifest_entries "e['directory_name']+'|'+e['original_path']")
+done < <(manifest_entries '.[] | "\(.directory_name)|\(.original_path)"')
 
 # ==============================
 # Phase 4: バックアップ + 上書き
@@ -159,7 +169,7 @@ while IFS='|' read -r DIR_NAME ORIGINAL_PATH; do
   # 上書き
   cp "${IMPROVED_FILE}" "${ORIGINAL_PATH}"
   echo -e "  ${GREEN}✓${NC} ${DIR_NAME}: 適用完了"
-done < <(manifest_entries "e['directory_name']+'|'+e['original_path']")
+done < <(manifest_entries '.[] | "\(.directory_name)|\(.original_path)"')
 
 echo ""
 echo -e "${BLUE}================================================${NC}"
