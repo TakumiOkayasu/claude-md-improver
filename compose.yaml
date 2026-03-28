@@ -4,6 +4,8 @@ services:
     user: "${UID:-1000}:${GID:-1000}"
     volumes:
       - .:/app:ro
+      - ${SOURCE_DIR:-.}:/source:ro
+      - ${WORK_DIR:-./tmp_work}:/work
     working_dir: /app
 
   test:
