@@ -10,8 +10,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export DOCKER_UID="$(id -u)"
 export DOCKER_GID="$(id -g)"
-SOURCE_DIR="${1:-$HOME/prog}"
-WORK_DIR="${2:-$HOME/prog/tmp_claude}"
+export SOURCE_DIR="${1:-$HOME/prog}"
+export WORK_DIR="${2:-$HOME/prog/tmp_claude}"
 shift 2 2>/dev/null || true
 EXTRA_ARGS=("$@")
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
